@@ -135,6 +135,8 @@ def init_state():
         "channel_label": "по e-mail",
         "segment": None,
         "top_category": None,
+        "used_shops": [],
+        "show_used_filter": False,
     }
     for k, v in defaults.items():
         if k not in st.session_state:
@@ -167,6 +169,36 @@ def compute_segment():
 
     st.session_state["segment"]     = seg
     st.session_state["top_category"] = top_cat
+
+
+def pick_promos(top_cat: str, used_shops: list, n: int = 3) -> list:
+    """
+    Возвращает n промокодов, исключая магазины из used_shops (первый заказ уже был).
+    Сначала берёт из top_cat, при нехватке — добирает из остальных категорий
+    в порядке убывания частоты из freq_matrix.
+    """
+    excluded = set(used_shops)
+    freq_matrix = st.session_state.get("freq_matrix", {})
+
+    # Порядок категорий: top_cat первая, остальные по убыванию частоты
+    other_cats = sorted(
+        [c for c in PROMO_CATALOG if c != top_cat],
+        key=lambda c: freq_matrix.get(c, 0),
+        reverse=True,
+    )
+    ordered_cats = [top_cat] + other_cats
+
+    result = []
+    seen_shops = set()
+    for cat in ordered_cats:
+        for promo in PROMO_CATALOG.get(cat, []):
+            shop = promo["shop"]
+            if shop not in excluded and shop not in seen_shops:
+                result.append({**promo, "cat": cat})
+                seen_shops.add(shop)
+            if len(result) >= n:
+                return result
+    return result
 
 
 # ---------------------------------------------------------------------------
@@ -705,16 +737,78 @@ def render_result():
 
     st.success(f"Подписка оформлена! Ваш профиль покупателя: **{seg_name}**")
 
-    st.markdown(f"### Топ‑3 промокода для вас сегодня")
-    st.caption(f"Подобраны по вашей главной категории: **{top_cat}**")
+    st.markdown("### Топ‑3 промокода для вас сегодня")
 
-    promos = PROMO_CATALOG.get(top_cat, PROMO_CATALOG["Одежда и обувь"])
+    used_shops = st.session_state.get("used_shops", [])
+
+    # Строка: подпись + кнопка-тоггл
+    col_title, col_btn = st.columns([5, 3])
+    with col_title:
+        if used_shops:
+            st.caption(
+                f"Подобраны по категории **{top_cat}** · "
+                f"исключено знакомых сервисов: {len(used_shops)} шт."
+            )
+        else:
+            st.caption(f"Подобраны по вашей главной категории: **{top_cat}**")
+    with col_btn:
+        btn_label = (
+            "✅ Скрыть фильтр сервисов"
+            if st.session_state["show_used_filter"]
+            else "🚫 Уже заказывал в некоторых"
+        )
+        if st.button(btn_label, use_container_width=True):
+            st.session_state["show_used_filter"] = not st.session_state["show_used_filter"]
+            st.rerun()
+
+    # Панель фильтра первого заказа
+    if st.session_state["show_used_filter"]:
+        with st.container(border=True):
+            st.markdown(
+                "**Отметьте сервисы, где уже был первый заказ** — "
+                "их промокоды исчезнут из подборки"
+            )
+            st.caption(
+                "Промокоды «на первый заказ» больше не работают для вас. "
+                "Отмечайте честно — подборка станет точнее."
+            )
+            st.markdown("<br>", unsafe_allow_html=True)
+
+            new_used = []
+            for cat_name, promos_in_cat in PROMO_CATALOG.items():
+                st.markdown(f"**{cat_name}**")
+                check_cols = st.columns(len(promos_in_cat))
+                for j, promo in enumerate(promos_in_cat):
+                    with check_cols[j]:
+                        if st.checkbox(
+                            promo["shop"],
+                            value=promo["shop"] in st.session_state["used_shops"],
+                            key=f"used_{promo['shop']}",
+                        ):
+                            new_used.append(promo["shop"])
+
+            st.markdown("<br>", unsafe_allow_html=True)
+            col_apply, col_reset, _ = st.columns([2, 2, 4])
+            with col_apply:
+                if st.button("Обновить подборку", type="primary", use_container_width=True):
+                    st.session_state["used_shops"] = new_used
+                    st.session_state["show_used_filter"] = False
+                    st.rerun()
+            with col_reset:
+                if st.button("Сбросить", use_container_width=True):
+                    st.session_state["used_shops"] = []
+                    st.session_state["show_used_filter"] = False
+                    st.rerun()
+
+    # Карточки промокодов (с учётом фильтра)
+    promos = pick_promos(top_cat, used_shops, n=3)
     cols = st.columns(3)
     for i, promo in enumerate(promos[:3]):
         with cols[i]:
+            badge = "Для вас" if promo["cat"] == top_cat else promo["cat"]
             st.markdown(f"""
             <div class="promo-card">
-              <span class="promo-badge">Для вас</span>
+              <span class="promo-badge">{badge}</span>
               <div class="promo-shop">{promo['shop']}</div>
               <div class="promo-desc">{promo['desc']}</div>
               <span class="promo-code-box">{promo['code']}</span>
