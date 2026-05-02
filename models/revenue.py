@@ -15,17 +15,25 @@ Stock-and-Flow модель роста аудитории (заменяет S-к
                                                               └ w_a% → seg_act
                                                             (+ ежемесячные переходы между сегментами)
 
-Центральная формула выручки:
+Центральная формула выручки (4-сценарная модель партнёрских выплат):
     N_redemptions = MAU_hub × Coverage × CTR × RR × avg_rpu
-    Revenue_CPA   = N_redemptions × share_CPA × CPA_avg
-    Revenue_RS    = N_redemptions × (1 − share_CPA) × AOV_avg × RevShare_avg
-    Revenue_gross = (Revenue_CPA + Revenue_RS) × incremental_adj
+
+    Каждый redemption классифицируется по сценарию с точки зрения партнёра:
+        NEW      (w_new%)     — партнёр привлёк нового клиента          → price_new ₽
+        LOYAL    (w_loyal%)   — лояльный клиент повышает вовлечённость   → price_loyal ₽
+        RET      (w_ret%)     — реактивация ушедшего (lapsed 60+ дней)  → price_ret ₽
+        AT_RISK  (w_at_risk%) — удержание клиента в зоне риска оттока   → price_at_risk ₽
+
+    Revenue = N_redemptions
+              × (w_new×price_new + w_loyal×price_loyal + w_ret×price_ret + w_at_risk×price_at_risk) / 100
+              × incremental_adj
 
 MAU_hub = new_app + seg_low + seg_mid + seg_act
-           (только app-авторизованные; web-only — без атрибуции CPA/RevShare)
+           (только app-авторизованные; web-only — без атрибуции)
 
 Гарантии (guardrails):
     - w_l + w_m + w_a == 100% (с допуском 0.1)
+    - w_new + w_loyal + w_ret + w_at_risk == 100% (с допуском 0.1)
     - low_to_mid + low_to_act ≤ 100%
     - mid_to_low + mid_to_act ≤ 100%
     - act_to_low + act_to_mid ≤ 100%
@@ -59,13 +67,16 @@ def calculate_model(params: Dict, num_months: int) -> List[Dict]:
                   act_to_low, act_to_mid
         Воронка: p1/p2/p3_offer_coverage, p1/p2/p3_ctr_offer,
                  p1/p2/p3_redemption_rate
-        Монетизация: cpa_avg, aov_avg, revshare_avg, share_cpa, incremental_adj
+        Монетизация (4-сценарная):
+            Веса сценариев (%): w_new, w_loyal, w_ret, w_at_risk (сумма = 100)
+            Цены (₽/redemption): price_new, price_loyal, price_ret, price_at_risk
+            Поправка: incremental_adj
         Фазы: phase1_end, phase2_end
 
     Возвращает список словарей (один на каждый месяц), содержащих:
         month, phase, pool_web, pool_app, new_web, new_app, graduating,
         seg_low, seg_mid, seg_act, mau_hub, avg_rpu, n_redemptions,
-        revenue_cpa, revenue_rs, total_revenue
+        revenue_new, revenue_loyal, revenue_ret, revenue_at_risk, total_revenue
     """
     # ── Параметры посетителей ─────────────────────────────────────────────────
     MAU_web          = float(params["MAU_web"])
@@ -115,15 +126,27 @@ def calculate_model(params: Dict, num_months: int) -> List[Dict]:
             f"= {(act_to_low+act_to_mid)*100:.1f}% > 100%. Outflow из ACT не может превышать 100%."
         )
 
-    # ── Воронка и монетизация ─────────────────────────────────────────────────
+    # ── Воронка и монетизация (4-сценарная) ──────────────────────────────────
     phase1_end = int(params["phase1_end"])
     phase2_end = int(params["phase2_end"])
 
-    cpa_avg       = float(params["cpa_avg"])
-    aov_avg       = float(params["aov_avg"])
-    revshare_avg  = float(params["revshare_avg"]) / 100.0
-    share_cpa     = float(params["share_cpa"])    / 100.0
-    incr_adj      = float(params["incremental_adj"])
+    w_new      = float(params["w_new"])
+    w_loyal    = float(params["w_loyal"])
+    w_ret      = float(params["w_ret"])
+    w_at_risk  = float(params["w_at_risk"])
+    if abs(w_new + w_loyal + w_ret + w_at_risk - 100.0) > 0.1:
+        raise ValueError(
+            f"w_new({w_new}) + w_loyal({w_loyal}) + w_ret({w_ret}) + w_at_risk({w_at_risk}) "
+            f"= {w_new+w_loyal+w_ret+w_at_risk} ≠ 100. "
+            "Сумма весов сценариев монетизации должна равняться 100%."
+        )
+
+    price_new      = float(params["price_new"])
+    price_loyal    = float(params["price_loyal"])
+    price_ret      = float(params["price_ret"])
+    price_at_risk  = float(params["price_at_risk"])
+    incr_adj       = float(params["incremental_adj"])
+
 
     # ── Инициализация (m = 0) ─────────────────────────────────────────────────
     # pool_web: только web-only посетители (overlap-пользователи исключены — они app-only)
@@ -204,7 +227,7 @@ def calculate_model(params: Dict, num_months: int) -> List[Dict]:
         else:
             avg_rpu = rpu_new_blended
 
-        # ── 9. Воронка и выручка ──────────────────────────────────────────────
+        # ── 9. Воронка и выручка (4-сценарная модель) ────────────────────────
         phase = _get_phase(m, phase1_end, phase2_end)
         p = f"p{phase}"
         offer_coverage  = float(params[f"{p}_offer_coverage"]) / 100.0
@@ -213,27 +236,31 @@ def calculate_model(params: Dict, num_months: int) -> List[Dict]:
 
         n_redemptions = mau_hub * offer_coverage * ctr_offer * redemption_rate * avg_rpu
 
-        revenue_cpa = n_redemptions * share_cpa * cpa_avg
-        revenue_rs  = n_redemptions * (1.0 - share_cpa) * aov_avg * revshare_avg
-        total_rev   = (revenue_cpa + revenue_rs) * incr_adj
+        revenue_new      = n_redemptions * (w_new     / 100.0) * price_new
+        revenue_loyal    = n_redemptions * (w_loyal   / 100.0) * price_loyal
+        revenue_ret      = n_redemptions * (w_ret     / 100.0) * price_ret
+        revenue_at_risk  = n_redemptions * (w_at_risk / 100.0) * price_at_risk
+        total_rev        = (revenue_new + revenue_loyal + revenue_ret + revenue_at_risk) * incr_adj
 
         results.append({
-            "month":        m,
-            "phase":        phase,
-            "pool_web":     pool_web,
-            "pool_app":     pool_app,
-            "new_web":      new_web_next,
-            "new_app":      new_app_next,
-            "graduating":   graduating,
-            "seg_low":      seg_low_next,
-            "seg_mid":      seg_mid_next,
-            "seg_act":      seg_act_next,
-            "mau_hub":      mau_hub,
-            "avg_rpu":      avg_rpu,
-            "n_redemptions": n_redemptions,
-            "revenue_cpa":  revenue_cpa,
-            "revenue_rs":   revenue_rs,
-            "total_revenue": total_rev,
+            "month":            m,
+            "phase":            phase,
+            "pool_web":         pool_web,
+            "pool_app":         pool_app,
+            "new_web":          new_web_next,
+            "new_app":          new_app_next,
+            "graduating":       graduating,
+            "seg_low":          seg_low_next,
+            "seg_mid":          seg_mid_next,
+            "seg_act":          seg_act_next,
+            "mau_hub":          mau_hub,
+            "avg_rpu":          avg_rpu,
+            "n_redemptions":    n_redemptions,
+            "revenue_new":      revenue_new,
+            "revenue_loyal":    revenue_loyal,
+            "revenue_ret":      revenue_ret,
+            "revenue_at_risk":  revenue_at_risk,
+            "total_revenue":    total_rev,
         })
 
         # Сохраняем state для следующей итерации

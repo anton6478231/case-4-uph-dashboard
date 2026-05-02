@@ -4,7 +4,8 @@
 График 1 — Cash Flow: Revenue / Total Costs / CF / Cumulative CF по месяцам.
            Вертикальные линии на границах Phase 1→2→3.
 
-График 2 — Структура выручки: CPA Revenue vs RevShare Revenue (stacked bar).
+График 2 — Структура выручки: 4 сценария партнёрских выплат (stacked bar):
+           NEW / LOYAL / RET / AT_RISK.
 
 График 3 — Структура затрат: Fixed Costs vs Variable Costs (stacked bar).
 
@@ -161,34 +162,52 @@ def create_revenue_breakdown_chart(
     phase2_end: int,
 ) -> go.Figure:
     """
-    Stacked bar: CPA Revenue vs RevShare Revenue по месяцам.
+    Stacked bar: 4 сценария партнёрских выплат по месяцам.
 
-    Показывает, как меняется структура дохода при росте каталога партнёров
-    и сдвиге mix CPA → RevShare.
+    NEW      — партнёр платит за нового клиента (Acquisition, X=2).
+    LOYAL    — партнёр платит за incremental uplift лояльного (Expansion, X=4).
+    RET      — партнёр платит за реактивацию ушедшего (Reactivation, X=1).
+    AT_RISK  — партнёр платит за удержание в зоне оттока (Anti-churn, X=3).
+
+    Показывает, как меняется структура дохода по сценариям при росте каталога.
     """
-    months = [r["month"] for r in cf_results]
-    rev_cpa = [r["revenue_cpa"] for r in cf_results]
-    rev_rs = [r["revenue_rs"] for r in cf_results]
+    months       = [r["month"] for r in cf_results]
+    rev_new      = [r.get("revenue_new",     0.0) for r in cf_results]
+    rev_loyal    = [r.get("revenue_loyal",   0.0) for r in cf_results]
+    rev_ret      = [r.get("revenue_ret",     0.0) for r in cf_results]
+    rev_at_risk  = [r.get("revenue_at_risk", 0.0) for r in cf_results]
 
     fig = go.Figure()
 
     fig.add_trace(go.Bar(
-        x=months, y=rev_cpa,
-        name="CPA-выручка",
+        x=months, y=rev_new,
+        name="NEW (новый клиент)",
         marker_color="#3B82F6",
-        hovertemplate="М%{x}: %{y:,.0f} ₽<extra>CPA</extra>",
+        hovertemplate="М%{x}: %{y:,.0f} ₽<extra>NEW</extra>",
     ))
     fig.add_trace(go.Bar(
-        x=months, y=rev_rs,
-        name="RevShare-выручка",
+        x=months, y=rev_loyal,
+        name="LOYAL (лояльный)",
         marker_color="#10B981",
-        hovertemplate="М%{x}: %{y:,.0f} ₽<extra>RevShare</extra>",
+        hovertemplate="М%{x}: %{y:,.0f} ₽<extra>LOYAL</extra>",
+    ))
+    fig.add_trace(go.Bar(
+        x=months, y=rev_ret,
+        name="RET (реактивация)",
+        marker_color="#F59E0B",
+        hovertemplate="М%{x}: %{y:,.0f} ₽<extra>RET</extra>",
+    ))
+    fig.add_trace(go.Bar(
+        x=months, y=rev_at_risk,
+        name="AT_RISK (удержание)",
+        marker_color="#8B5CF6",
+        hovertemplate="М%{x}: %{y:,.0f} ₽<extra>AT_RISK</extra>",
     ))
 
     _phase_vlines(fig, phase1_end, phase2_end, len(cf_results))
 
     fig.update_layout(
-        title="График 2 — Структура выручки: CPA vs RevShare",
+        title="График 2 — Структура выручки: 4 сценария партнёрских выплат",
         xaxis_title="Месяц",
         yaxis_title="Рубли (₽)",
         barmode="stack",

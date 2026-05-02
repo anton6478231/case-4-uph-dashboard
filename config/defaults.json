@@ -8,44 +8,48 @@
     "MAU_web": 300000,
     "MAU_app": 34000000,
     "overlap_web_app_pct": 30.0,
-    "u_to_a_new_web": 4.0,
-    "u_to_a_new_app": 0.5,
-    "web_to_app": 20.0
+    "u_to_a_new_web": 6.0,
+    "u_to_a_new_app": 1.5,
+    "web_to_app": 28.0
   },
   "segment_weights": {
-    "w_l": 60,
-    "w_m": 30,
-    "w_a": 10
+    "w_l": 55,
+    "w_m": 33,
+    "w_a": 12
   },
   "purchases_per_segment": {
-    "purchases_low": 1.0,
-    "purchases_mid": 1.5,
-    "purchases_act": 3.0
+    "purchases_low": 1.5,
+    "purchases_mid": 2.5,
+    "purchases_act": 5.0
   },
   "segment_transitions": {
-    "low_to_mid": 20,
+    "low_to_mid": 25,
     "low_to_act": 3,
-    "mid_to_low": 12,
-    "mid_to_act": 15,
+    "mid_to_low": 9,
+    "mid_to_act": 20,
     "act_to_low": 2,
-    "act_to_mid": 8
+    "act_to_mid": 5
   },
   "funnel": {
-    "p1_offer_coverage": 60.0,
-    "p1_ctr_offer": 12.0,
-    "p1_redemption_rate": 15.0,
-    "p2_offer_coverage": 75.0,
-    "p2_ctr_offer": 14.0,
-    "p2_redemption_rate": 20.0,
-    "p3_offer_coverage": 90.0,
-    "p3_ctr_offer": 18.0,
-    "p3_redemption_rate": 28.0
+    "p1_offer_coverage": 65.0,
+    "p1_ctr_offer": 16.0,
+    "p1_redemption_rate": 20.0,
+    "p2_offer_coverage": 80.0,
+    "p2_ctr_offer": 18.0,
+    "p2_redemption_rate": 27.0,
+    "p3_offer_coverage": 92.0,
+    "p3_ctr_offer": 22.0,
+    "p3_redemption_rate": 36.0
   },
   "monetization": {
-    "cpa_avg": 500,
-    "aov_avg": 2000,
-    "revshare_avg": 5.0,
-    "share_cpa": 70.0,
+    "w_new": 25,
+    "w_loyal": 40,
+    "w_ret": 20,
+    "w_at_risk": 15,
+    "price_new": 650,
+    "price_loyal": 170,
+    "price_ret": 420,
+    "price_at_risk": 290,
     "incremental_adj": 0.87
   },
   "variable_costs": {

@@ -90,7 +90,10 @@ def display_kpi_cards(
             value=format_currency_compact(total_revenue),
             help=(
                 f"Суммарная выручка за горизонт {num_months} мес: {format_currency(total_revenue)}. "
-                "CPA + RevShare × поправку на каннибализацию."
+                "4-сценарная модель партнёрских выплат: "
+                "NEW (новый клиент партнёра) + LOYAL (лояльный, uplift) + "
+                "RET (реактивация ушедшего) + AT_RISK (удержание в зоне оттока) — "
+                "× поправку на каннибализацию."
             ),
         )
 
