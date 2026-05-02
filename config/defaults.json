@@ -4,11 +4,31 @@
     "phase1_end": 3,
     "phase2_end": 9
   },
-  "audience": {
-    "mau_tbank": 34000000,
-    "mau_penetration_p1": 4.4,
-    "mau_penetration_p2": 9.4,
-    "mau_penetration_p3": 19.0
+  "visitor_model": {
+    "MAU_web": 300000,
+    "MAU_app": 34000000,
+    "overlap_web_app_pct": 30.0,
+    "u_to_a_new_web": 4.0,
+    "u_to_a_new_app": 0.5,
+    "web_to_app": 20.0
+  },
+  "segment_weights": {
+    "w_l": 60,
+    "w_m": 30,
+    "w_a": 10
+  },
+  "purchases_per_segment": {
+    "purchases_low": 1.0,
+    "purchases_mid": 1.5,
+    "purchases_act": 3.0
+  },
+  "segment_transitions": {
+    "low_to_mid": 20,
+    "low_to_act": 3,
+    "mid_to_low": 12,
+    "mid_to_act": 15,
+    "act_to_low": 2,
+    "act_to_mid": 8
   },
   "funnel": {
     "p1_offer_coverage": 60.0,
@@ -29,22 +49,25 @@
     "incremental_adj": 0.87
   },
   "variable_costs": {
-    "vc_per_redemption_p1": 36,
-    "vc_per_redemption_p2": 27,
-    "vc_per_redemption_p3": 18
+    "vc_per_redemption_p1": 22,
+    "vc_per_redemption_p2": 16,
+    "vc_per_redemption_p3": 10
   },
   "fixed_costs": {
-    "p1_team":      8000000,
-    "p1_infra":     5000000,
-    "p1_marketing": 3000000,
-    "p1_referral":  1000000,
-    "p2_team":     20000000,
-    "p2_infra":    10000000,
-    "p2_marketing": 7000000,
-    "p2_referral":  3000000,
-    "p3_team":     35000000,
-    "p3_infra":    15000000,
-    "p3_marketing":10000000,
-    "p3_referral":  5000000
+    "p1_team":      3500000,
+    "p1_infra":      800000,
+    "p1_marketing": 1200000,
+    "p1_referral":   500000,
+    "p2_team":      8000000,
+    "p2_infra":     2500000,
+    "p2_marketing": 3000000,
+    "p2_referral":  1500000,
+    "p3_team":     14000000,
+    "p3_infra":     5000000,
+    "p3_marketing": 5000000,
+    "p3_referral":  3000000
+  },
+  "discount": {
+    "annual_rate_pct": 20.0
   }
 }
