@@ -1,0 +1,50 @@
+{
+  "horizon": {
+    "num_months": 24,
+    "phase1_end": 3,
+    "phase2_end": 9
+  },
+  "audience": {
+    "mau_tbank": 34000000,
+    "mau_penetration_p1": 4.4,
+    "mau_penetration_p2": 9.4,
+    "mau_penetration_p3": 19.0
+  },
+  "funnel": {
+    "p1_offer_coverage": 60.0,
+    "p1_ctr_offer": 12.0,
+    "p1_redemption_rate": 15.0,
+    "p2_offer_coverage": 75.0,
+    "p2_ctr_offer": 14.0,
+    "p2_redemption_rate": 20.0,
+    "p3_offer_coverage": 90.0,
+    "p3_ctr_offer": 18.0,
+    "p3_redemption_rate": 28.0
+  },
+  "monetization": {
+    "cpa_avg": 500,
+    "aov_avg": 2000,
+    "revshare_avg": 5.0,
+    "share_cpa": 70.0,
+    "incremental_adj": 0.87
+  },
+  "variable_costs": {
+    "vc_per_redemption_p1": 36,
+    "vc_per_redemption_p2": 27,
+    "vc_per_redemption_p3": 18
+  },
+  "fixed_costs": {
+    "p1_team":      8000000,
+    "p1_infra":     5000000,
+    "p1_marketing": 3000000,
+    "p1_referral":  1000000,
+    "p2_team":     20000000,
+    "p2_infra":    10000000,
+    "p2_marketing": 7000000,
+    "p2_referral":  3000000,
+    "p3_team":     35000000,
+    "p3_infra":    15000000,
+    "p3_marketing":10000000,
+    "p3_referral":  5000000
+  }
+}
