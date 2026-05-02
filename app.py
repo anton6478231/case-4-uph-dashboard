@@ -28,5 +28,11 @@ business_logic_page = st.Page(
     icon="📖",
 )
 
-pg = st.navigation([calculator_page, business_logic_page])
+mvp_onboarding_page = st.Page(
+    "pages/mvp_onboarding.py",
+    title="MVP: Онбординг",
+    icon="🛍️",
+)
+
+pg = st.navigation([calculator_page, business_logic_page, mvp_onboarding_page])
 pg.run()
