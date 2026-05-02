@@ -81,35 +81,52 @@ FREQ_LABELS = {
 }
 
 PROMO_CATALOG = {
+    # Структура каждого промокода:
+    #   first_order: True — работает только при первом заказе у партнёра
+    #   relevance: 1–3 (3 = наивысший приоритет показа)
+    #   tag: короткое обоснование показа для пользователя
     "Одежда и обувь": [
-        {"shop": "Kanzler",      "desc": "Скидка до 50% на мужскую одежду",             "code": "KANZLER50"},
-        {"shop": "BRANDSHOP",    "desc": "Скидка 10% на брендовую одежду",              "code": "BRAND10"},
-        {"shop": "SuperStep",    "desc": "Скидка 15% на брендовые кроссовки от 5 000 ₽","code": "STEP15"},
+        {"shop": "Kanzler",    "desc": "Скидка до 50% на мужскую одежду",              "code": "KANZLER50", "first_order": False, "relevance": 3, "tag": "Высокая скидка"},
+        {"shop": "SuperStep",  "desc": "Скидка 15% на брендовые кроссовки от 5 000 ₽", "code": "STEP15",   "first_order": False, "relevance": 3, "tag": "Без ограничений"},
+        {"shop": "Lamoda",     "desc": "Скидка 20% на первый заказ от 3 000 ₽",        "code": "LAM20",    "first_order": True,  "relevance": 2, "tag": "Первый заказ"},
+        {"shop": "BRANDSHOP",  "desc": "Скидка 10% на брендовую одежду",               "code": "BRAND10",  "first_order": False, "relevance": 2, "tag": "Популярный"},
+        {"shop": "Wildberries","desc": "Скидка 5% при оплате картой Т-Банка",          "code": "WBTB5",    "first_order": False, "relevance": 1, "tag": "С картой Т-Банка"},
     ],
     "Продукты и рестораны": [
-        {"shop": "Яндекс Еда",   "desc": "Скидка 300 ₽ на первый заказ от 800 ₽",      "code": "YEDA300"},
-        {"shop": "Delivery Club","desc": "Бесплатная доставка на 3 заказа",              "code": "DCFREE3"},
-        {"shop": "ВкусВилл",     "desc": "Скидка 10% на весь заказ онлайн",             "code": "VV10"},
+        {"shop": "ВкусВилл",     "desc": "Скидка 10% на весь заказ онлайн",           "code": "VV10",     "first_order": False, "relevance": 3, "tag": "Без ограничений"},
+        {"shop": "Delivery Club","desc": "Бесплатная доставка на 3 заказа",           "code": "DCFREE3",  "first_order": False, "relevance": 3, "tag": "Многоразовый"},
+        {"shop": "Яндекс Еда",  "desc": "Скидка 300 ₽ на первый заказ от 800 ₽",     "code": "YEDA300",  "first_order": True,  "relevance": 2, "tag": "Первый заказ"},
+        {"shop": "СберМаркет",  "desc": "Скидка 200 ₽ на первый заказ от 1 500 ₽",   "code": "SBMKT200", "first_order": True,  "relevance": 2, "tag": "Первый заказ"},
+        {"shop": "Самокат",     "desc": "Скидка 15% на первые 3 заказа",              "code": "SAM15X3",  "first_order": True,  "relevance": 1, "tag": "Первые заказы"},
+        {"shop": "Perekrestok", "desc": "Скидка 7% при заказе от 2 000 ₽",            "code": "PX7",      "first_order": False, "relevance": 1, "tag": "Регулярный"},
     ],
     "Путешествия и отели": [
-        {"shop": "Отели Т-Банка","desc": "Скидка до 20% на первое бронирование",        "code": "ВЕСНА"},
-        {"shop": "Tutu.ru",      "desc": "Скидка 500 ₽ на авиабилеты от 3 000 ₽",       "code": "TUTU500"},
-        {"shop": "Купибилет",    "desc": "Кэшбэк 7% на ж/д билеты",                    "code": "KUP7"},
+        {"shop": "Tutu.ru",      "desc": "Скидка 500 ₽ на авиабилеты от 3 000 ₽",    "code": "TUTU500",  "first_order": False, "relevance": 3, "tag": "Без ограничений"},
+        {"shop": "Купибилет",    "desc": "Кэшбэк 7% на ж/д билеты",                  "code": "KUP7",     "first_order": False, "relevance": 3, "tag": "Кэшбэк"},
+        {"shop": "Отели Т-Банка","desc": "Скидка до 20% на первое бронирование",      "code": "ВЕСНА",    "first_order": True,  "relevance": 2, "tag": "Первое бронирование"},
+        {"shop": "Aviasales",    "desc": "Кэшбэк 3% на любые авиабилеты",             "code": "AVIA3",    "first_order": False, "relevance": 2, "tag": "На любой рейс"},
+        {"shop": "Яндекс Путешествия","desc": "Скидка 10% на первый отель",           "code": "YAT10",    "first_order": True,  "relevance": 1, "tag": "Первый отель"},
     ],
     "Техника и электроника": [
-        {"shop": "DNS",          "desc": "Скидка 5% на смартфоны и планшеты",           "code": "DNS5"},
-        {"shop": "Ситилинк",     "desc": "Скидка 3 000 ₽ на ноутбуки от 50 000 ₽",     "code": "SL3000"},
-        {"shop": "AliExpress",   "desc": "Скидка 8% на электронику от 2 000 ₽",         "code": "ALI8"},
+        {"shop": "Ситилинк",   "desc": "Скидка 3 000 ₽ на ноутбуки от 50 000 ₽",    "code": "SL3000",   "first_order": False, "relevance": 3, "tag": "Высокая скидка"},
+        {"shop": "DNS",        "desc": "Скидка 5% на смартфоны и планшеты",           "code": "DNS5",     "first_order": False, "relevance": 3, "tag": "Без ограничений"},
+        {"shop": "AliExpress", "desc": "Скидка 8% на электронику от 2 000 ₽",         "code": "ALI8",     "first_order": False, "relevance": 2, "tag": "Популярный"},
+        {"shop": "М.Видео",    "desc": "Скидка 2 000 ₽ на первый заказ от 20 000 ₽", "code": "MV2000",   "first_order": True,  "relevance": 2, "tag": "Первый заказ"},
+        {"shop": "Ozon",       "desc": "Скидка 5% при оплате картой Т-Банка",         "code": "OZNTB5",   "first_order": False, "relevance": 1, "tag": "С картой Т-Банка"},
     ],
     "Красота и здоровье": [
-        {"shop": "Золотое Яблоко","desc": "Скидка 15% на уходовую косметику",           "code": "ZYA15"},
-        {"shop": "iHerb",         "desc": "Скидка 10% на первый заказ",                "code": "IHERB10"},
-        {"shop": "Genotek",       "desc": "Скидка 20% на тест ДНК",                    "code": "GEN20"},
+        {"shop": "Золотое Яблоко","desc": "Скидка 15% на уходовую косметику",         "code": "ZYA15",    "first_order": False, "relevance": 3, "tag": "Высокая скидка"},
+        {"shop": "Genotek",    "desc": "Скидка 20% на тест ДНК",                      "code": "GEN20",    "first_order": False, "relevance": 3, "tag": "Без ограничений"},
+        {"shop": "Аптека.ру",  "desc": "Скидка 10% на первый заказ в аптеке онлайн",  "code": "APT10",    "first_order": True,  "relevance": 2, "tag": "Первый заказ"},
+        {"shop": "iHerb",      "desc": "Скидка 10% на первый заказ",                  "code": "IHERB10",  "first_order": True,  "relevance": 2, "tag": "Первый заказ"},
+        {"shop": "Л'Этуаль",   "desc": "Скидка 12% при покупке от 1 500 ₽",           "code": "LET12",    "first_order": False, "relevance": 1, "tag": "Регулярный"},
     ],
     "Дом и интерьер": [
-        {"shop": "Divan.ru",     "desc": "Скидка 10% на диваны и кресла",              "code": "DIVAN10"},
-        {"shop": "IKEA",         "desc": "Скидка 500 ₽ при покупке от 5 000 ₽",        "code": "IKEA500"},
-        {"shop": "Все инструменты","desc": "Скидка 7% на весь ассортимент",            "code": "TOOL7"},
+        {"shop": "Divan.ru",        "desc": "Скидка 10% на диваны и кресла",          "code": "DIVAN10",  "first_order": False, "relevance": 3, "tag": "Без ограничений"},
+        {"shop": "Все инструменты", "desc": "Скидка 7% на весь ассортимент",          "code": "TOOL7",    "first_order": False, "relevance": 3, "tag": "Популярный"},
+        {"shop": "IKEA",            "desc": "Скидка 500 ₽ при покупке от 5 000 ₽",   "code": "IKEA500",  "first_order": False, "relevance": 2, "tag": "Без ограничений"},
+        {"shop": "Hoff",            "desc": "Скидка 15% на первый заказ онлайн",      "code": "HOFF15",   "first_order": True,  "relevance": 2, "tag": "Первый заказ"},
+        {"shop": "Leroy Merlin",    "desc": "Скидка 5% при оплате картой Т-Банка",    "code": "LRTB5",    "first_order": False, "relevance": 1, "tag": "С картой Т-Банка"},
     ],
 }
 
@@ -171,34 +188,55 @@ def compute_segment():
     st.session_state["top_category"] = top_cat
 
 
-def pick_promos(top_cat: str, used_shops: list, n: int = 3) -> list:
+def pick_promos(top_cat: str, used_shops: list, n: int = 3) -> dict:
     """
-    Возвращает n промокодов, исключая магазины из used_shops (первый заказ уже был).
-    Сначала берёт из top_cat, при нехватке — добирает из остальных категорий
-    в порядке убывания частоты из freq_matrix.
+    Возвращает словарь:
+        "promos"   — список до n промокодов
+        "source"   — "top" (из top_cat) | "fallback:<cat>" (замена из другой категории)
+        "excluded" — список исключённых промокодов (first_order + used_shops)
+
+    Логика:
+    1. Берём все промокоды top_cat, сортируем по relevance DESC.
+    2. Исключаем: first_order=True И shop в used_shops.
+    3. Показываем оставшиеся (даже если < n) — НЕ смешиваем категории.
+    4. Если в top_cat не осталось ни одного — находим следующую категорию
+       с ненулевой частотой в freq_matrix и берём её top-n без фильтра
+       (у пользователя там нет истории заказов — мы про неё ничего не знаем).
     """
     excluded = set(used_shops)
     freq_matrix = st.session_state.get("freq_matrix", {})
 
-    # Порядок категорий: top_cat первая, остальные по убыванию частоты
-    other_cats = sorted(
+    all_in_cat = sorted(
+        PROMO_CATALOG.get(top_cat, []),
+        key=lambda p: p["relevance"],
+        reverse=True,
+    )
+    excluded_list = [p for p in all_in_cat if p["first_order"] and p["shop"] in excluded]
+    available     = [p for p in all_in_cat if not (p["first_order"] and p["shop"] in excluded)]
+
+    if available:
+        return {
+            "promos":   [dict(p, cat=top_cat) for p in available[:n]],
+            "source":   "top",
+            "excluded": excluded_list,
+        }
+
+    # Нет промокодов в top_cat → ищем следующую по частоте категорию
+    fallback_cats = sorted(
         [c for c in PROMO_CATALOG if c != top_cat],
         key=lambda c: freq_matrix.get(c, 0),
         reverse=True,
     )
-    ordered_cats = [top_cat] + other_cats
+    for cat in fallback_cats:
+        pool = sorted(PROMO_CATALOG[cat], key=lambda p: p["relevance"], reverse=True)
+        if pool:
+            return {
+                "promos":   [dict(p, cat=cat) for p in pool[:n]],
+                "source":   f"fallback:{cat}",
+                "excluded": excluded_list,
+            }
 
-    result = []
-    seen_shops = set()
-    for cat in ordered_cats:
-        for promo in PROMO_CATALOG.get(cat, []):
-            shop = promo["shop"]
-            if shop not in excluded and shop not in seen_shops:
-                result.append({**promo, "cat": cat})
-                seen_shops.add(shop)
-            if len(result) >= n:
-                return result
-    return result
+    return {"promos": [], "source": "empty", "excluded": excluded_list}
 
 
 # ---------------------------------------------------------------------------
@@ -741,7 +779,6 @@ def render_result():
 
     used_shops = st.session_state.get("used_shops", [])
 
-    # Строка: подпись + кнопка-тоггл
     col_title, col_btn = st.columns([5, 3])
     with col_title:
         if used_shops:
@@ -801,19 +838,55 @@ def render_result():
                     st.rerun()
 
     # Карточки промокодов (с учётом фильтра)
-    promos = pick_promos(top_cat, used_shops, n=3)
-    cols = st.columns(3)
-    for i, promo in enumerate(promos[:3]):
-        with cols[i]:
-            badge = "Для вас" if promo["cat"] == top_cat else promo["cat"]
-            st.markdown(f"""
-            <div class="promo-card">
-              <span class="promo-badge">{badge}</span>
-              <div class="promo-shop">{promo['shop']}</div>
-              <div class="promo-desc">{promo['desc']}</div>
-              <span class="promo-code-box">{promo['code']}</span>
-            </div>
-            """, unsafe_allow_html=True)
+    result = pick_promos(top_cat, used_shops, n=3)
+    promos  = result["promos"]
+    source  = result["source"]
+    excluded_promos = result["excluded"]
+
+    # Пояснение источника подборки
+    if source == "top":
+        if excluded_promos:
+            st.caption(
+                f"Показаны промокоды из категории **{top_cat}**, "
+                f"доступные для повторных покупок. "
+                f"Исключено промокодов «только для новых клиентов»: {len(excluded_promos)} шт."
+            )
+        else:
+            st.caption(f"Подобраны по вашей главной категории: **{top_cat}**")
+    elif source.startswith("fallback:"):
+        fallback_cat = source.split(":", 1)[1]
+        st.warning(
+            f"В категории **{top_cat}** все доступные промокоды уже использованы вами "
+            f"(первые заказы). Показываем следующую по популярности категорию: **{fallback_cat}**"
+        )
+    else:
+        st.info("Промокоды временно недоступны — попробуйте сбросить фильтр.")
+
+    if promos:
+        cols = st.columns(len(promos))
+        for i, promo in enumerate(promos):
+            with cols[i]:
+                tag_color = {
+                    "Высокая скидка":    "#E53935",
+                    "Без ограничений":   "#388E3C",
+                    "Многоразовый":      "#388E3C",
+                    "Кэшбэк":           "#1565C0",
+                    "С картой Т-Банка":  "#6A1B9A",
+                    "Первый заказ":      "#F57C00",
+                    "Первое бронирование":"#F57C00",
+                    "Первые заказы":     "#F57C00",
+                    "Регулярный":        "#546E7A",
+                    "Популярный":        "#00838F",
+                    "На любой рейс":     "#388E3C",
+                }.get(promo.get("tag", ""), "#888")
+                st.markdown(f"""
+                <div class="promo-card">
+                  <span class="promo-badge">⭐ {promo.get('tag', 'Для вас')}</span>
+                  <div class="promo-shop">{promo['shop']}</div>
+                  <div class="promo-desc">{promo['desc']}</div>
+                  <span class="promo-code-box">{promo['code']}</span>
+                </div>
+                """, unsafe_allow_html=True)
 
     # Сводка подписки
     active_cats = {cat: score for cat, score in freq_matrix.items() if score > 0}
