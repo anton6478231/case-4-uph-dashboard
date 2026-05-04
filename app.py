@@ -40,17 +40,31 @@ case_answers_page = st.Page(
     icon="📋",
 )
 
+custdev_results_page = st.Page(
+    "pages/custdev_results.py",
+    title="Результаты CustDev",
+    icon="🔬",
+)
+
 business_case_page = st.Page(
     "pages/business_case_page.py",
     title="Условие кейса",
     icon="📄",
 )
 
+market_analysis_page = st.Page(
+    "pages/market_analysis.py",
+    title="Анализ рынка",
+    icon="🌍",
+)
+
 pg = st.navigation([
+    business_case_page,
+    case_answers_page,
+    market_analysis_page,
+    mvp_onboarding_page,
     calculator_page,
     business_logic_page,
-    mvp_onboarding_page,
-    case_answers_page,
-    business_case_page,
+    custdev_results_page,
 ])
 pg.run()
