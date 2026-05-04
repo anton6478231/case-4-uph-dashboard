@@ -1,7 +1,8 @@
 """
 KPI-карточки для дашборда Unified Promo Hub.
 
-11 метрик в четырёх строках:
+14 метрик в пяти строках:
+  Строка 0 (3 col): ROI год 1   | NPV год 1    | MAU Hub год 1  ← месяц 12 от старта проекта
   Строка 1 (3 col): Выручка     | Затраты      | Чистый CF
   Строка 2 (3 col): CF Breakeven| NPV (итог)   | MAU Hub (кон.)
   Строка 3 (3 col): Redemptions | NPV Breakeven| avg_rpu (кон.)
@@ -47,15 +48,25 @@ def display_kpi_cards(
     cf_results: List[Dict],
     breakeven: Dict,
     num_months: int,
+    total_investment: Optional[float] = None,
+    roi_year1: Optional[float] = None,
+    rnd_months: int = 0,
+    final_npv_combined: Optional[float] = None,
+    mau_hub_year12: float = 0.0,
+    npv_year12: Optional[float] = None,
 ):
     """
-    Отображает 11 KPI-карточек над графиками.
+    Отображает KPI-карточки над графиками.
 
-    cf_results — результат calculate_cash_flow_for_months()
-                 (содержит поля stock-and-flow: avg_rpu, seg_act, mau_hub,
-                  pool_web, pool_app из revenue-шага через cash_flow сборку)
-    breakeven  — результат calculate_breakeven_month()
-    num_months — горизонт расчёта
+    cf_results          — результат calculate_cash_flow_for_months() (рыночные месяцы)
+    breakeven           — результат calculate_breakeven_month()
+    num_months          — горизонт расчёта (рыночные месяцы)
+    total_investment    — net cash outflow за RnD фазу (None если RnD выключен)
+    roi_year1           — ROI за 12 мес. от старта инвестиций (None если RnD выключен)
+    rnd_months          — длина RnD фазы (для подписей)
+    final_npv_combined  — итоговый NPV с учётом RnD (None → берётся из cf_results)
+    mau_hub_year12      — MAU Hub (черная линия: mau_hub + new_web) на проектный месяц 12
+    npv_year12          — Накопленный NPV (combined) на проектный месяц 12
     """
     if not cf_results:
         st.warning("Нет данных для расчёта KPI.")
@@ -63,12 +74,84 @@ def display_kpi_cards(
 
     st.markdown(_KPI_CSS, unsafe_allow_html=True)
 
+    # ── Строка 0: ROI | NPV год 1 | MAU Hub год 1  (месяц 12 от старта проекта) ─
+    _year12_market = max(1, 12 - rnd_months)   # номер рыночного месяца, соответствующего году 1
+    _y12_label = (
+        f"Год 1 — проектный мес. 12"
+        + (f" (рынок М{_year12_market})" if rnd_months > 0 else "")
+    )
+    st.markdown(f"#### 📍 {_y12_label}")
+    st.caption(
+        "Все три метрики — на 12-й месяц от старта инвестиций (включая RnD фазу), "
+        "как видно на графиках. Ось X на графиках: RnD месяцы + рыночные месяцы = единая шкала."
+    )
+    r0c1, r0c2, r0c3 = st.columns(3)
+
+    with r0c1:
+        if roi_year1 is not None:
+            roi_delta_color = "normal" if roi_year1 >= 0 else "inverse"
+            st.metric(
+                label="ROI год 1 (от старта инвестиций)",
+                value=f"{roi_year1:.0f}%",
+                delta="положительный" if roi_year1 >= 0 else "отрицательный",
+                delta_color=roi_delta_color,
+                help=(
+                    f"ROI = (ΣCF за 12 мес. от инвестиций) / |RnD инвестиции| × 100%. "
+                    f"Включает: RnD фазу ({rnd_months} мес.) + рыночные М1..М{_year12_market}. "
+                    "Знаменатель — net cash outflow RnD фазы (затраты минус пилотная выручка). "
+                    "Положительный ROI означает, что к 12-му месяцу инвестиции окупились."
+                ),
+            )
+        else:
+            st.metric(
+                label="ROI год 1",
+                value="—",
+                help="Доступно только при включённой RnD фазе. Включите «RnD / Pre-launch фаза» в боковой панели.",
+            )
+
+    with r0c2:
+        _npv12 = npv_year12 if npv_year12 is not None else 0.0
+        npv12_delta_color = "normal" if _npv12 >= 0 else "inverse"
+        st.metric(
+            label=f"NPV на проектный мес. 12",
+            value=format_currency_compact(_npv12),
+            delta="положительный" if _npv12 >= 0 else "отрицательный",
+            delta_color=npv12_delta_color,
+            help=(
+                f"Накопленный дисконтированный NPV на 12-й месяц от старта проекта "
+                f"(combined timeline: RnD + рынок). "
+                f"Совпадает с точкой М{_year12_market} рыночной шкалы на Графике 1 (Cumulative NPV). "
+                "Отрицательный в первые месяцы — норма: RnD инвестиции ещё не отбиты. "
+                f"Итоговый NPV за весь горизонт: {format_currency_compact(final_npv_combined or 0)}."
+            ),
+        )
+
+    with r0c3:
+        st.metric(
+            label=f"MAU Hub (активный) на мес. 12",
+            value=format_number_compact(mau_hub_year12),
+            help=(
+                f"Суммарный активный охват Hub на проектный месяц 12 "
+                f"(рыночный М{_year12_market}): {mau_hub_year12:,.0f} пользователей. "
+                "Соответствует чёрной линии на Графике 4 (Сегментная динамика): "
+                "mau_hub (app: NEW + LOW + MID + ACT) + new_web (web-only авторизованные). "
+                "Именно эта аудитория генерирует выручку через redemptions."
+            ),
+        )
+
+    st.markdown("---")
+
     total_revenue     = sum(r["revenue"] for r in cf_results)
     total_costs       = sum(r["total_costs"] for r in cf_results)
     net_cf            = sum(r["cash_flow"] for r in cf_results)
     mau_final         = cf_results[-1]["mau_hub"]
     total_redemptions = sum(r["n_redemptions"] for r in cf_results)
-    final_npv         = cf_results[-1].get("cumulative_npv", 0.0)
+    # NPV: предпочитаем combined (с RnD), иначе только рыночный
+    final_npv = (
+        final_npv_combined
+        if final_npv_combined is not None
+        else cf_results[-1].get("cumulative_npv", 0.0)
+    )
 
     # Новые метрики из stock-and-flow
     avg_rpu_final     = cf_results[-1].get("avg_rpu", 0.0)
@@ -250,5 +333,18 @@ def display_kpi_cards(
                 f"pool_web = {pool_web_final:,.0f}, pool_app = {pool_app_final:,.0f}. "
                 "Чем меньше остаток, тем больше потенциала конвертировано в MAU Hub. "
                 "pool_app всегда большой — 34M × (1−u_app)^N при u_app = 0.5%."
+            ),
+        )
+
+    # ── Строка 5: RnD инвестиции (только если RnD включён) ──────────────────────
+    if total_investment is not None and total_investment > 0:
+        st.markdown("**— RnD фаза —**")
+        st.metric(
+            label="RnD инвестиции (net outflow)",
+            value=format_currency_compact(total_investment),
+            help=(
+                f"Суммарный net cash outflow за RnD фазу: {format_currency(total_investment)}. "
+                f"= Σ затрат за {rnd_months} мес. − пилотная выручка последнего месяца. "
+                "Это знаменатель ROI (см. карточку «ROI год 1» выше) и база для combined NPV."
             ),
         )

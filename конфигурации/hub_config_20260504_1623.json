@@ -1,0 +1,97 @@
+{
+  "schema_version": 1,
+  "exported_at": "2026-05-04T16:23:40",
+  "horizon": {
+    "num_months": 24,
+    "phase1_end": 3,
+    "phase2_end": 9
+  },
+  "mau_growth": {
+    "web_annual_growth_pct": 35.0,
+    "app_annual_growth_pct": 18.0
+  },
+  "visitor_model": {
+    "MAU_web": 300000,
+    "MAU_app": 34000000,
+    "overlap_web_app_pct": 30.0,
+    "u_to_a_new_web": 6.0,
+    "u_to_a_new_app": 1.5,
+    "web_to_app": 28.0,
+    "p1_k_factor": 0.03,
+    "p2_k_factor": 0.1,
+    "p3_k_factor": 0.3
+  },
+  "segment_weights": {
+    "w_l": 55,
+    "w_m": 33,
+    "w_a": 12
+  },
+  "purchases_per_segment": {
+    "purchases_low": 1.5,
+    "purchases_mid": 2.5,
+    "purchases_act": 5.0
+  },
+  "segment_transitions": {
+    "low_to_mid": 25,
+    "low_to_act": 3,
+    "mid_to_low": 9,
+    "mid_to_act": 20,
+    "act_to_low": 2,
+    "act_to_mid": 5
+  },
+  "funnel": {
+    "p1_offer_coverage": 65.0,
+    "p1_ctr_offer": 16.0,
+    "p1_redemption_rate": 20.0,
+    "p2_offer_coverage": 80.0,
+    "p2_ctr_offer": 18.0,
+    "p2_redemption_rate": 27.0,
+    "p3_offer_coverage": 92.0,
+    "p3_ctr_offer": 22.0,
+    "p3_redemption_rate": 36.0
+  },
+  "monetization": {
+    "w_new": 25,
+    "w_loyal": 40,
+    "w_ret": 20,
+    "w_at_risk": 15,
+    "price_new": 200,
+    "price_loyal": 100,
+    "price_ret": 150,
+    "price_at_risk": 100,
+    "incremental_adj": 0.87
+  },
+  "variable_costs": {
+    "vc_per_redemption_p1": 22,
+    "vc_per_redemption_p2": 16,
+    "vc_per_redemption_p3": 10
+  },
+  "fixed_costs": {
+    "p1_team": 3500000,
+    "p1_infra": 800000,
+    "p1_marketing": 1200000,
+    "p1_referral": 500000,
+    "p2_team": 8000000,
+    "p2_infra": 2500000,
+    "p2_marketing": 3000000,
+    "p2_referral": 1500000,
+    "p3_team": 14000000,
+    "p3_infra": 5000000,
+    "p3_marketing": 5000000,
+    "p3_referral": 3000000
+  },
+  "discount": {
+    "annual_rate_pct": 20.0
+  },
+  "rnd": {
+    "enabled": true,
+    "months": 3,
+    "pilot_audience_pct": 5,
+    "monthly_costs": {
+      "Зарплаты команды": 3000000,
+      "Инфраструктура": 500000,
+      "Разработка/тестирование": 1500000,
+      "Прочие расходы RnD": 500000
+    }
+  }
+}

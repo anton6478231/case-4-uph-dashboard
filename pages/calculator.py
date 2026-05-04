@@ -20,6 +20,8 @@
   7. Детальная таблица по месяцам (включая сегменты, avg_rpu, пулы)
 """
 import json
+import math
+import datetime
 import streamlit as st
 import pandas as pd
 from pathlib import Path
@@ -28,7 +30,13 @@ from models import (
     calculate_model,
     calculate_costs_for_months,
     calculate_cash_flow_for_months,
+    discount_rnd_cash_flows,
     calculate_breakeven_month,
+    calculate_RnD_cash_flows,
+    get_total_RnD_investment,
+    build_empty_matrix,
+    ensure_matrix_size,
+    DEFAULT_RND_CATEGORIES,
 )
 from visualization import (
     create_cash_flow_chart,
@@ -50,7 +58,8 @@ def load_defaults() -> dict:
         return json.load(f)
 
 
-D = load_defaults()
+# Позволяет загрузить конфигурацию через Import — override хранится в session_state
+D = st.session_state.get("_hub_config_override") or load_defaults()
 
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -117,38 +126,176 @@ if phase2_end <= phase1_end:
     phase2_end = phase1_end + 1
     st.sidebar.warning(f"Phase 2 End скорректирован до {phase2_end}")
 
+# --- Блок 1.5: RnD / Pre-launch фаза ---
+st.sidebar.markdown("### 🔬 RnD / Pre-launch фаза")
+st.sidebar.caption(
+    "Период разработки и тестирования до коммерческого запуска. "
+    "Месяц 1 — только затраты на команду и инфраструктуру. "
+    "Последний RnD месяц — пилот на малой выборке пользователей."
+)
+
+_RND_D = D.get("rnd", {})
+
+rnd_enabled = st.sidebar.toggle(
+    "Включить RnD фазу",
+    value=bool(_RND_D.get("enabled", True)),
+    help=(
+        "При включении модель добавляет N предстартовых месяцев перед рыночной фазой. "
+        "NPV и ROI пересчитываются с учётом смещения: рыночный месяц t "
+        "дисконтируется как позиция (rnd_months + t) от момента инвестиций."
+    ),
+)
+
+if rnd_enabled:
+    rnd_months = st.sidebar.slider(
+        "Длительность RnD фазы (мес.)",
+        min_value=1, max_value=6,
+        value=int(_RND_D.get("months", 2)),
+        step=1,
+        help=(
+            "Количество предстартовых месяцев. Base = 2: "
+            "месяц 1 — сборка команды + инфра MVP, "
+            "месяц 2 — пилот на ограниченной аудитории. "
+            "Бенчмарк: Chase Offers MVP-фаза 0–3 мес. (BAI 2024). "
+            "Rakuten/Honey pre-launch: 2–4 мес. для первичного каталога партнёров."
+        ),
+    )
+
+    st.sidebar.markdown("**Бюджет RnD фазы (₽/мес. по статьям)**")
+    st.sidebar.caption(
+        "Одинаковый бюджет по каждой статье на все RnD месяцы. "
+        "Итоговые инвестиции = сумма всех затрат − пилотная выручка последнего месяца."
+    )
+
+    _rnd_defaults = _RND_D.get("monthly_costs", {
+        "Зарплаты команды":          3_000_000,
+        "Инфраструктура":              500_000,
+        "Разработка/тестирование":   1_500_000,
+        "Прочие расходы RnD":          500_000,
+    })
+
+    rnd_monthly_costs: dict = {}
+    for cat in DEFAULT_RND_CATEGORIES:
+        rnd_monthly_costs[cat] = st.sidebar.number_input(
+            cat,
+            min_value=0,
+            max_value=50_000_000,
+            value=_rnd_defaults.get(cat, 500_000),
+            step=100_000,
+            format="%d",
+            key=f"rnd_cat_{cat}",
+        )
+
+    # Матрица: одинаковый бюджет на каждый RnD месяц
+    rnd_costs_matrix = {
+        cat: [float(v)] * rnd_months
+        for cat, v in rnd_monthly_costs.items()
+    }
+    rnd_costs_matrix = ensure_matrix_size(rnd_costs_matrix, rnd_months)
+
+    pilot_audience_pct = st.sidebar.slider(
+        "Аудитория пилота (% от стартового MAU)",
+        min_value=1, max_value=20,
+        value=int(_RND_D.get("pilot_audience_pct", 5)),
+        step=1,
+        help=(
+            "Масштаб пилота в последнем RnD месяце: доля от базовых MAU_web/MAU_app. "
+            "5% = 15k пользователей сайта + 1.7M app — репрезентативная тестовая выборка. "
+            "Пилотная выручка вычитается из общих RnD затрат при расчёте инвестиций."
+        ),
+    )
+
+    _rnd_total_costs_preview = sum(
+        v * rnd_months for v in rnd_monthly_costs.values()
+    )
+    st.sidebar.caption(
+        f"Суммарный бюджет RnD: **{_rnd_total_costs_preview:,.0f} ₽** "
+        f"за {rnd_months} мес. "
+        f"(~{_rnd_total_costs_preview / 1_000_000:.1f}M ₽)"
+    )
+else:
+    rnd_months = 0
+    rnd_costs_matrix = build_empty_matrix(DEFAULT_RND_CATEGORIES, 1)
+    pilot_audience_pct = 0
+
 # --- Блок 2: Посетители (stock-and-flow) ---
 st.sidebar.markdown("### 🌐 Посетители (stock-and-flow)")
 st.sidebar.caption(
-    "Два независимых входных потока. Каждый месяц фиксированное число посетителей "
-    "конвертируется в NEW-пользователей из убывающего пула."
+    "Два независимых входных потока. Каждый месяц MAU платформы растёт на заданный %, "
+    "прирост пополняет убывающий пул потенциальных Hub-пользователей."
 )
 
 VM = D["visitor_model"]
+MG = D.get("mau_growth", {})
 
 mau_web = st.sidebar.number_input(
-    "MAU сайта promokod.tbank.ru",
+    "MAU сайта promokod.tbank.ru (старт)",
     min_value=10_000, max_value=10_000_000,
     value=int(VM["MAU_web"]),
     step=10_000,
     format="%d",
     help=(
-        "Ежемесячные уникальные посетители сайта. Base = 300 000. "
+        "Стартовое MAU сайта (месяц 0). Base = 300 000. "
         "Диапазон 200–600k (unit-economics.md §3). "
         "pool_web[0] = MAU_web × (1 − overlap%), т.е. только web-only посетители."
     ),
 )
 mau_app = st.sidebar.number_input(
-    "MAU приложения T-Bank",
+    "MAU приложения T-Bank (старт)",
     min_value=1_000_000, max_value=100_000_000,
     value=int(VM["MAU_app"]),
     step=1_000_000,
     format="%d",
     help=(
-        "Ежемесячная аудитория приложения. Base = 34 000 000 (FY2025 IR T-Bank). "
+        "Стартовое MAU приложения (месяц 0). Base = 34 000 000 (FY2025 IR T-Bank). "
         "pool_app[0] = MAU_app (перекрытие учтено в pool_web)."
     ),
 )
+
+with st.sidebar.expander("📈 Рост MAU платформы (%/год)", expanded=False):
+    st.caption(
+        "Ежегодный темп роста MAU сайта и приложения. Пересчитывается в помесячный: "
+        "r = (1 + annual/100)^(1/12) − 1. Каждый месяц прирост MAU пополняет пул "
+        "потенциальных пользователей Hub."
+    )
+    mau_web_annual_growth = st.slider(
+        "Рост MAU сайта (%/год)",
+        min_value=0.0, max_value=200.0,
+        value=float(MG.get("web_annual_growth_pct", 35.0)),
+        step=1.0,
+        help=(
+            "Годовой рост MAU promokod.tbank.ru. Base = 35%. "
+            "Логика: Hub-запуск → редизайн сайта + SEO → органический рост. "
+            "Бенчмарк: Honey/PayPal web трафик рос 40–60%/год в первые 2 года после запуска; "
+            "Купонатор (РФ) ~20%/год при зрелости. 35% — умеренный сценарий для нового продукта. "
+            "Годовой → месячный: (1,35)^(1/12) − 1 ≈ 2.54%/мес."
+        ),
+    )
+    mau_app_annual_growth = st.slider(
+        "Рост MAU приложения (%/год)",
+        min_value=0.0, max_value=100.0,
+        value=float(MG.get("app_annual_growth_pct", 18.0)),
+        step=1.0,
+        help=(
+            "Годовой рост MAU T-Bank App. Base = 18%. "
+            "Логика: T-Bank MAU вырос с ~27M (9М2024) до 34M (FY2025) = +26% за год. "
+            "На горизонте 2 лет рост замедляется по мере насыщения: "
+            "крупные super-app (Revolut, Grab) удерживают 15–20%/год при MAU >30M. "
+            "18% — консервативный base. "
+            "Годовой → месячный: (1,18)^(1/12) − 1 ≈ 1.39%/мес."
+        ),
+    )
+    # Показываем итоговые MAU в конце горизонта
+    mau_web_final = mau_web * (1.0 + mau_web_annual_growth / 100.0) ** (num_months / 12.0)
+    mau_app_final = mau_app * (1.0 + mau_app_annual_growth / 100.0) ** (num_months / 12.0)
+    st.caption(
+        f"MAU сайта к месяцу {num_months}: **{mau_web_final:,.0f}** "
+        f"(×{mau_web_final/mau_web:.1f}× от старта)"
+    )
+    st.caption(
+        f"MAU приложения к месяцу {num_months}: **{mau_app_final/1_000_000:.1f}M** "
+        f"(×{mau_app_final/mau_app:.2f}× от старта)"
+    )
 overlap_pct = st.sidebar.slider(
     "Перекрытие web ∩ app (%)",
     min_value=0.0, max_value=100.0,
@@ -178,10 +325,17 @@ u_to_a_app = st.sidebar.slider(
     value=float(VM["u_to_a_new_app"]),
     step=0.01,
     help=(
-        "Доля остатка pool_app, конвертирующаяся в NEW каждый месяц. Base = 1.5%. "
-        "AppsFlyer State of Finance Apps 2025: in-app rewards feature activation rate "
-        "в банковских super-app = 1.2–2.1%/мес при наличии push-уведомления о запуске. "
-        "1.5% × 34M = 510k новых пользователей/мес в Phase 1. "
+        "Доля остатка pool_app, конвертирующаяся в NEW каждый месяц. Base = 1.0%. "
+        "Компромисс между агрессивным 1.5% (давало 12M+ hub-пользователей = 35% аудитории "
+        "T-Bank — нереалистично для одной новой фичи) и консервативным 0.5%. "
+        "1.0% × 34M = 340k новых/мес → ~4–5M накопленных к мес.24 ≈ 12–14% проникновения "
+        "с учётом platform churn (реальная активная база ~2.5–3.5M). "
+        "Логика: T-Bank имеет преимущество перед нуля — промокоды уже существуют в app, "
+        "продвижение через push-уведомления при запуске Hub даёт буст активации. "
+        "Бенчмарк: СберСпасибо — фича активируется ~1%/мес от MAU Сбера в первые 12 мес. "
+        "запуска персонализации (Ведомости, 2024, оценочно); "
+        "AppsFlyer Finance Apps 2025: in-app rewards activation 0.6–1.2%/мес при наличии "
+        "onboarding push. 1.0% — середина этого диапазона. "
         "fresh_app[m] = pool_app[m−1] × u_to_a_new_app/100."
     ),
 )
@@ -198,6 +352,54 @@ web_to_app = st.sidebar.slider(
         "ВАЖНО: мигранты НЕ добавляются в new_app[m] — только через graduating, нет двойного счёта."
     ),
 )
+with st.sidebar.expander("K-фактор по фазам", expanded=False):
+    st.sidebar.caption(
+        "Вирусный коэффициент: сколько новых пользователей приводит каждый "
+        "существующий за месяц через шеринг промокодов. "
+        "k = (доля шерящих) × (конверсия инвайта). "
+        "Реферальный приток — КОГОРТНАЯ модель: referral_new[m] = cum_graduating[m−1] × (k_annual / 12). "
+        "k_annual = годовой K-фактор: сколько рефералов генерирует 1 пользователь суммарно за 12 месяцев."
+    )
+    p1_k_factor = st.sidebar.slider(
+        "K-фактор Phase 1 — годовой (мес. 1–3)",
+        min_value=0.0, max_value=0.5,
+        value=float(VM.get("p1_k_factor", 0.03)),
+        step=0.01,
+        help=(
+            "ГОДОВОЙ K: каждый пришедший пользователь генерирует 0.03 реферала за 12 мес. "
+            "Ежемесячная ставка = 0.03 / 12 = 0.0025. "
+            "P1: реферальная петля не запущена, нет бонусов — только «сарафан». "
+            "~5% шарят спонтанно × 60% конверсия. "
+            "referral_new = cum_graduating × 0.0025 — пренебрежимо мал на старте."
+        ),
+    )
+    p2_k_factor = st.sidebar.slider(
+        "K-фактор Phase 2 — годовой (мес. 4–9)",
+        min_value=0.0, max_value=0.5,
+        value=float(VM.get("p2_k_factor", 0.10)),
+        step=0.01,
+        help=(
+            "ГОДОВОЙ K: каждый пришедший пользователь генерирует 0.10 реферала за 12 мес. "
+            "Ежемесячная ставка = 0.10 / 12 = 0.0083. "
+            "P2: запущен Сценарий 4 «web+бонус» — кнопка «Поделиться» + +50–100₽. "
+            "~15% шарят × 67% конверсия. "
+            "Бенчмарк: Cash App referral k ≈ 0.08–0.12 годовой (BAI Banking Strategies 2023, оценочно)."
+        ),
+    )
+    p3_k_factor = st.sidebar.slider(
+        "K-фактор Phase 3 — годовой (мес. 10–18)",
+        min_value=0.0, max_value=1.0,
+        value=float(VM.get("p3_k_factor", 0.30)),
+        step=0.01,
+        help=(
+            "ГОДОВОЙ K: каждый пришедший пользователь генерирует 0.30 реферала за 12 мес. "
+            "Ежемесячная ставка = 0.30 / 12 = 0.025. "
+            "P3: зрелая петля — геймификация streak, двусторонний бонус, A-ACT-евангелисты. "
+            "50% A-ACT шарят × 60% конверсия = K=0.30. "
+            "Бенчмарк: Ibotta год 3 — k ≈ 0.25–0.35 (Ibotta S-1, 2024, оценочно). "
+            "При cum_graduating = 2M → +50K рефералов/мес — заметный, но не взрывной вклад."
+        ),
+    )
 
 # --- Блок 3: Поведенческие паттерны NEW ---
 st.sidebar.markdown("### 🧩 Поведенческие паттерны NEW")
@@ -370,6 +572,68 @@ with st.sidebar.expander("ACT → другие сегменты", expanded=False
         st.error(f"⚠️ Outflow ACT = {act_outflow}% > 100%!")
     else:
         st.success(f"✅ Outflow ACT = {act_outflow}% (удержание {100 - act_outflow}%)")
+
+# --- Блок 4.5: Отток с платформы ---
+st.sidebar.markdown("### 🚪 Отток с платформы (Platform Churn)")
+st.sidebar.caption(
+    "Доля пользователей каждого сегмента, которые **полностью прекращают** использование хаба "
+    "в данном месяце. Без этого параметра MAU_hub — поглощающий автомат: "
+    "пользователи только переходят LOW↔MID↔ACT, но никогда не уходят насовсем, "
+    "что завышает долгосрочную базу и раздувает ROI."
+)
+
+_PC_D = D.get("platform_churn", {})
+
+with st.sidebar.expander("Ежемесячный отток по сегментам", expanded=True):
+    hub_churn_low = st.slider(
+        "Отток LOW → уход с платформы (%/мес)",
+        min_value=0, max_value=50,
+        value=int(_PC_D.get("hub_monthly_churn_low_pct", 15)),
+        step=1,
+        help=(
+            "Доля LOW-пользователей, ежемесячно покидающих хаб насовсем. Base = 15%. "
+            "Пассивные пользователи: попробовали один промокод, не вернулись. "
+            "AppsFlyer Finance Apps 2025: 60-day retention для non-core banking feature "
+            "= 35–45% → ежемесячный отток ≈ 14–18%. "
+            "При 15%: 6-мес. retention = 85%^6 = 37.7%, 12-мес. = 85%^12 = 14.2%. "
+            "Суммарный outflow LOW = low_to_mid + low_to_act + churn_low ≤ 100%."
+        ),
+    )
+    hub_churn_mid = st.slider(
+        "Отток MID → уход с платформы (%/мес)",
+        min_value=0, max_value=50,
+        value=int(_PC_D.get("hub_monthly_churn_mid_pct", 8)),
+        step=1,
+        help=(
+            "Доля MID-пользователей, ежемесячно покидающих хаб. Base = 8%. "
+            "Ситуативные пользователи: уходят в периоды без релевантных офферов "
+            "(после Нового года, летом в off-season). "
+            "При 8%: 6-мес. retention = 92%^6 = 60.6%, 12-мес. = 92%^12 = 36.8%. "
+            "Cardlytics 2024: MID-tier inactive rate 6–10%/мес в CLO-программах без re-engagement push. "
+            "Суммарный outflow MID = mid_to_low + mid_to_act + churn_mid ≤ 100%."
+        ),
+    )
+    hub_churn_act = st.slider(
+        "Отток ACT → уход с платформы (%/мес)",
+        min_value=0, max_value=20,
+        value=int(_PC_D.get("hub_monthly_churn_act_pct", 3)),
+        step=1,
+        help=(
+            "Доля ACT-пользователей, ежемесячно покидающих хаб. Base = 3%. "
+            "Power-users: CLO auto-apply удерживает статус даже без явных действий. "
+            "При 3%: 6-мес. retention = 97%^6 = 83.2%, 12-мес. = 97%^12 = 69.4%. "
+            "Rakuten 2024: top-tier пользователи churnat на уровне 2–4%/мес. "
+            "Суммарный outflow ACT = act_to_low + act_to_mid + churn_act ≤ 100%."
+        ),
+    )
+    low_total_out = low_to_mid + low_to_act + hub_churn_low
+    mid_total_out = mid_to_low + mid_to_act + hub_churn_mid
+    act_total_out = act_to_low + act_to_mid + hub_churn_act
+    for _label, _out in [("LOW", low_total_out), ("MID", mid_total_out), ("ACT", act_total_out)]:
+        if _out > 100:
+            st.error(f"⚠️ Суммарный outflow {_label} = {_out}% > 100%! Уменьшите переходы или churn.")
+        else:
+            st.success(f"✅ Суммарный outflow {_label} = {_out}% (удержание {100 - _out}%)")
 
 # --- Блок 5: Воронка конверсии ---
 st.sidebar.markdown("### 🔽 Воронка конверсии")
@@ -555,10 +819,13 @@ price_new = st.sidebar.number_input(
     step=50,
     format="%d",
     help=(
-        "Плата партнёра за каждый redemption в сценарии Acquisition. Base = 650 ₽. "
-        "Admitad Россия 2025: fashion new-customer CPA 400–800 ₽, marketplace 600–900 ₽, "
-        "food delivery 250–500 ₽. Blended с учётом premium-скоса аудитории T-Bank = 650 ₽. "
-        "Совпадает с прежним cpa_avg — он был calibrated именно под acquisition-heavy mix."
+        "Плата партнёра за каждый redemption в сценарии Acquisition. Base = 200 ₽. "
+        "Логика: Admitad Россия 2024 — blended CPA по всем категориям 150–350 ₽; "
+        "фуд-доставка тянет среднее вниз (80–150 ₽), fashion 300–500 ₽, marketplace 200–400 ₽. "
+        "200 ₽ = entry-level ставка нового продукта без трек-рекорда: партнёры "
+        "стартуют с минимальных ставок и повышают их по мере доказательства инкрементальности. "
+        "Cardlytics US: начальный CPA для малых партнёров ~$2–3 (≈180–270 ₽). "
+        "При росте каталога и доказанном lift → переговоры на 300–500 ₽ (фаза 3)."
     ),
 )
 price_loyal = st.sidebar.number_input(
@@ -568,10 +835,13 @@ price_loyal = st.sidebar.number_input(
     step=10,
     format="%d",
     help=(
-        "Плата партнёра за incremental uplift у лояльного клиента. Base = 170 ₽. "
-        "Рассчитано как RevShare: AOV 2 600 ₽ × RevShare 6,5% ≈ 169 ₽. "
-        "Партнёр платит меньше — клиент уже его, нет стоимости привлечения. "
-        "Rakuten US: mediana cashback 6%, Admitad fashion RevShare 8–15% → нижняя граница."
+        "Плата партнёра за incremental uplift у лояльного клиента. Base = 100 ₽. "
+        "Рассчитано как RevShare: AOV 2 500 ₽ × RevShare 4% = 100 ₽. "
+        "Консервативный RevShare 4% отражает: (1) партнёр уже владеет клиентом — "
+        "incremental uplift труднее доказать в первых кварталах; "
+        "(2) стартовые переговоры всегда начинаются с нижней границы диапазона. "
+        "Admitad Россия 2024: базовые RevShare-ставки 3–6%; при наличии incrementality-отчёта "
+        "вырастают до 6–12%. 100 ₽ = первый год без доказательств lift."
     ),
 )
 price_ret = st.sidebar.number_input(
@@ -581,11 +851,13 @@ price_ret = st.sidebar.number_input(
     step=50,
     format="%d",
     help=(
-        "Плата партнёра за возврат ушедшего пользователя. Base = 420 ₽. "
-        "Admitad: reactivation CPA = 60–70% от new-customer CPA "
-        "(первая транзакция после паузы ≈ «частичное» привлечение). "
-        "650 × 0,65 = 422 ₽ → 420 ₽. Логика: клиент помнит бренд, "
-        "но надо вернуть привычку — затраты ниже, чем на нового."
+        "Плата партнёра за возврат ушедшего пользователя. Base = 150 ₽. "
+        "Рассчитано как 75% от price_new: 200 × 0,75 = 150 ₽. "
+        "Логика: клиент помнит бренд → затраты на возврат ниже, чем на нового, "
+        "но требует более ценного оффера, чем удержание лояльного. "
+        "Admitad: reactivation CPA стабильно составляет 60–80% от new-customer CPA "
+        "по категориям fashion и marketplace (2024). "
+        "150 ₽ = консервативный вход; при доказанном reactivation lift → 200–250 ₽."
     ),
 )
 price_at_risk = st.sidebar.number_input(
@@ -595,11 +867,13 @@ price_at_risk = st.sidebar.number_input(
     step=10,
     format="%d",
     help=(
-        "Плата партнёра за промокод/кешбек клиенту в зоне риска оттока. Base = 290 ₽. "
-        "Оценочно: ~45% от price_new (650 × 0,45 ≈ 290 ₽). "
-        "Логика: партнёр страхует будущий churn, а не восстанавливает утраченное → "
-        "платит меньше, чем за реактивацию (420 ₽), но больше, чем за лояльного (170 ₽). "
-        "Данных прямого бенчмарка нет; оценочно на основе gradient between RET и LOYAL."
+        "Плата партнёра за промокод/кешбек клиенту в зоне риска оттока. Base = 100 ₽. "
+        "Оценочно: 50% от price_new (200 × 0,50 = 100 ₽), на уровне price_LOYAL. "
+        "Логика: churn-prevention — превентивный инструмент, партнёр страхует будущую выручку. "
+        "Однако доказать факт «спасения» клиента сложнее, чем acquisition/reactivation → "
+        "партнёры не готовы платить премиум без A/B-доказательств. "
+        "100 ₽ = консервативная нижняя граница; после пилота с retention lift → 120–150 ₽. "
+        "Прямого бенчмарка нет; оценка на основе Cardlytics retention campaign pricing (оценочно)."
     ),
 )
 
@@ -794,14 +1068,14 @@ if weights_sum != 100:
     )
     st.stop()
 
-if low_to_mid + low_to_act > 100:
-    st.error(f"⚠️ Outflow из LOW = {low_to_mid + low_to_act}% > 100%. Исправьте переходы LOW.")
+if low_to_mid + low_to_act + hub_churn_low > 100:
+    st.error(f"⚠️ Суммарный outflow LOW = {low_to_mid + low_to_act + hub_churn_low}% > 100%. Исправьте переходы или отток LOW.")
     st.stop()
-if mid_to_low + mid_to_act > 100:
-    st.error(f"⚠️ Outflow из MID = {mid_to_low + mid_to_act}% > 100%. Исправьте переходы MID.")
+if mid_to_low + mid_to_act + hub_churn_mid > 100:
+    st.error(f"⚠️ Суммарный outflow MID = {mid_to_low + mid_to_act + hub_churn_mid}% > 100%. Исправьте переходы или отток MID.")
     st.stop()
-if act_to_low + act_to_mid > 100:
-    st.error(f"⚠️ Outflow из ACT = {act_to_low + act_to_mid}% > 100%. Исправьте переходы ACT.")
+if act_to_low + act_to_mid + hub_churn_act > 100:
+    st.error(f"⚠️ Суммарный outflow ACT = {act_to_low + act_to_mid + hub_churn_act}% > 100%. Исправьте переходы или отток ACT.")
     st.stop()
 if w_at_risk < 0:
     st.error(
@@ -821,12 +1095,17 @@ params = {
     "phase1_end":  int(phase1_end),
     "phase2_end":  int(phase2_end),
     # Посетители (stock-and-flow)
-    "MAU_web":            float(mau_web),
-    "MAU_app":            float(mau_app),
+    "MAU_web":                    float(mau_web),
+    "MAU_app":                    float(mau_app),
+    "mau_web_annual_growth_pct":  float(mau_web_annual_growth),
+    "mau_app_annual_growth_pct":  float(mau_app_annual_growth),
     "overlap_web_app_pct": float(overlap_pct),
     "u_to_a_new_web":     float(u_to_a_web),
     "u_to_a_new_app":     float(u_to_a_app),
     "web_to_app":         float(web_to_app),
+    "p1_k_factor":        float(p1_k_factor),
+    "p2_k_factor":        float(p2_k_factor),
+    "p3_k_factor":        float(p3_k_factor),
     # Веса и покупки по сегментам
     "w_l": float(w_l),
     "w_m": float(w_m),
@@ -841,6 +1120,10 @@ params = {
     "mid_to_act": float(mid_to_act),
     "act_to_low": float(act_to_low),
     "act_to_mid": float(act_to_mid),
+    # Отток с платформы
+    "hub_monthly_churn_low_pct": float(hub_churn_low),
+    "hub_monthly_churn_mid_pct": float(hub_churn_mid),
+    "hub_monthly_churn_act_pct": float(hub_churn_act),
     # Воронка (по фазам)
     "p1_offer_coverage":  float(fn_p1_cov),
     "p1_ctr_offer":       float(fn_p1_ctr),
@@ -883,12 +1166,97 @@ except ValueError as e:
     st.stop()
 
 costs_results = calculate_costs_for_months(params, revenue_results)
+
+# Рыночный CF дисконтируется со сдвигом rnd_months (если RnD включён)
 cf_results = calculate_cash_flow_for_months(
     revenue_results,
     costs_results,
     annual_discount_rate=float(annual_discount_rate),
+    month_offset=rnd_months,
 )
 breakeven = calculate_breakeven_month(cf_results)
+
+# ── RnD фаза ────────────────────────────────────────────────────────────────
+if rnd_enabled and rnd_months > 0:
+    # Пилотная выручка: запускаем модель на 1 месяц с масштабированным MAU
+    _pilot_scale = pilot_audience_pct / 100.0
+    _params_pilot = dict(params)
+    _params_pilot["MAU_web"] = float(mau_web) * _pilot_scale
+    _params_pilot["MAU_app"] = float(mau_app) * _pilot_scale
+    try:
+        _pilot_rev = calculate_model(_params_pilot, 1)
+        _pilot_costs = calculate_costs_for_months(_params_pilot, _pilot_rev)
+        pilot_revenue = _pilot_rev[0]["total_revenue"]
+    except Exception:
+        pilot_revenue = 0.0
+
+    RnD_cf_raw = calculate_RnD_cash_flows(rnd_months, rnd_costs_matrix, pilot_revenue)
+    RnD_cf = discount_rnd_cash_flows(RnD_cf_raw, annual_discount_rate=float(annual_discount_rate))
+    total_investment = get_total_RnD_investment(rnd_costs_matrix, rnd_months, pilot_revenue)
+
+    # combined_cf = RnD месяцы + рыночные месяцы (для графиков)
+    # cumulative CF в combined стартует с RnD и продолжается в рыночных
+    _rnd_cum_cf_end = RnD_cf[-1]["cumulative_cash_flow"] if RnD_cf else 0.0
+    _rnd_cum_npv_end = RnD_cf[-1]["cumulative_npv"] if RnD_cf else 0.0
+    _market_cf_adjusted = []
+    _running_cum_cf = _rnd_cum_cf_end
+    _running_cum_npv = _rnd_cum_npv_end
+    for row in cf_results:
+        _running_cum_cf += row["cash_flow"]
+        _running_cum_npv += row["discounted_cash_flow"]
+        _market_cf_adjusted.append(dict(
+            row,
+            cumulative_cash_flow=_running_cum_cf,
+            cumulative_npv=_running_cum_npv,
+        ))
+    combined_cf = RnD_cf + _market_cf_adjusted
+
+    # Breakeven по combined timeline (RnD-дефицит + рыночные месяцы).
+    # Используется в KPI-карточках и совпадает со звёздочкой на графике.
+    breakeven_combined = calculate_breakeven_month(_market_cf_adjusted)
+
+    # ROI год 1 — 12 месяцев от старта инвестиций
+    # = все RnD месяцы + первые (12 - rnd_months) рыночных месяцев
+    _year1_market_count = max(1, 12 - rnd_months)
+    _year1_rnd_cf = sum(r["cash_flow"] for r in RnD_cf_raw)
+    _year1_market_cf = sum(r["cash_flow"] for r in cf_results[:_year1_market_count])
+    _year1_cf_total = _year1_rnd_cf + _year1_market_cf
+    roi_year1 = (_year1_cf_total / total_investment * 100.0) if total_investment > 0 else None
+
+    # NPV итог = накопленный NPV по всему combined (конец рыночной фазы)
+    final_npv_combined = _market_cf_adjusted[-1]["cumulative_npv"] if _market_cf_adjusted else _rnd_cum_npv_end
+else:
+    RnD_cf = []
+    combined_cf = cf_results
+    pilot_revenue = 0.0
+    total_investment = 0.0
+    roi_year1 = None
+    final_npv_combined = cf_results[-1]["cumulative_npv"] if cf_results else 0.0
+    breakeven_combined = breakeven  # без RnD — combined совпадает с market-only
+
+# ── «Год 1 проекта» — метрики на 12-й месяц от старта инвестиций ─────────────
+# Проектный месяц 12 = RnD фаза + рыночная фаза.
+# Рыночный индекс (0-based): max(0, 12 - rnd_months - 1)
+# Если горизонт короче — берём последний доступный месяц.
+_year12_market_idx = max(0, min(12 - rnd_months - 1, len(cf_results) - 1))
+
+# MAU Hub (чёрная линия на графике 4) = mau_hub + new_web
+# cf_results в этот момент ещё не обогащён new_web — используем revenue_results
+_year12_rev_row = revenue_results[_year12_market_idx] if revenue_results else {}
+mau_hub_year12 = (
+    _year12_rev_row.get("mau_hub", 0.0) + _year12_rev_row.get("new_web", 0.0)
+)
+
+# NPV на проектный месяц 12 (combined timeline, включая RnD провал)
+if rnd_enabled and rnd_months > 0 and _market_cf_adjusted:
+    _y12_mkt_row = _market_cf_adjusted[_year12_market_idx]
+    npv_year12 = _y12_mkt_row["cumulative_npv"]
+else:
+    # RnD выключен: берём из рыночных cf_results
+    _y12_mkt_row = cf_results[_year12_market_idx] if cf_results else {}
+    npv_year12 = _y12_mkt_row.get("cumulative_npv", 0.0)
+
+# ROI год 1: уже вычислен выше как roi_year1 (та же логика — 12 мес. от инвестиций)
 
 # Обогащаем cf_results полями из revenue_results для KPI-карточек и таблицы
 _rev_map = {r["month"]: r for r in revenue_results}
@@ -901,9 +1269,158 @@ for row in cf_results:
     row.setdefault("seg_low",    rev.get("seg_low", 0.0))
     row.setdefault("seg_mid",    rev.get("seg_mid", 0.0))
     row.setdefault("seg_act",    rev.get("seg_act", 0.0))
-    row.setdefault("pool_web",   rev.get("pool_web", 0.0))
-    row.setdefault("pool_app",   rev.get("pool_app", 0.0))
+    row.setdefault("pool_web",    rev.get("pool_web", 0.0))
+    row.setdefault("pool_app",    rev.get("pool_app", 0.0))
+    row.setdefault("mau_web_cur", rev.get("mau_web_cur", float(mau_web)))
+    row.setdefault("mau_app_cur", rev.get("mau_app_cur", float(mau_app)))
 
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Конфигурация: экспорт / импорт
+# ──────────────────────────────────────────────────────────────────────────────
+
+st.sidebar.markdown("---")
+with st.sidebar.expander("💾 Конфигурация (экспорт / импорт)", expanded=False):
+    st.caption(
+        "**Экспорт** — скачайте текущие параметры как JSON и отправьте разработчику. "
+        "**Импорт** — загрузите ранее сохранённый JSON; параметры применятся сразу. "
+        "**Сброс** — вернуть все значения к базовым defaults."
+    )
+
+    # ── Сборка снапшота из текущих переменных ────────────────────────────────
+    _snapshot = {
+        "schema_version": 1,
+        "exported_at": datetime.datetime.now().isoformat(timespec="seconds"),
+        "horizon": {
+            "num_months":  int(num_months),
+            "phase1_end":  int(phase1_end),
+            "phase2_end":  int(phase2_end),
+        },
+        "mau_growth": {
+            "web_annual_growth_pct": float(mau_web_annual_growth),
+            "app_annual_growth_pct": float(mau_app_annual_growth),
+        },
+        "visitor_model": {
+            "MAU_web":             int(mau_web),
+            "MAU_app":             int(mau_app),
+            "overlap_web_app_pct": float(overlap_pct),
+            "u_to_a_new_web":      float(u_to_a_web),
+            "u_to_a_new_app":      float(u_to_a_app),
+            "web_to_app":          float(web_to_app),
+            "p1_k_factor":         float(p1_k_factor),
+            "p2_k_factor":         float(p2_k_factor),
+            "p3_k_factor":         float(p3_k_factor),
+        },
+        "segment_weights": {
+            "w_l": int(w_l),
+            "w_m": int(w_m),
+            "w_a": int(w_a),
+        },
+        "purchases_per_segment": {
+            "purchases_low": float(purch_low),
+            "purchases_mid": float(purch_mid),
+            "purchases_act": float(purch_act),
+        },
+        "segment_transitions": {
+            "low_to_mid": int(low_to_mid),
+            "low_to_act": int(low_to_act),
+            "mid_to_low": int(mid_to_low),
+            "mid_to_act": int(mid_to_act),
+            "act_to_low": int(act_to_low),
+            "act_to_mid": int(act_to_mid),
+        },
+        "funnel": {
+            "p1_offer_coverage":  float(fn_p1_cov),
+            "p1_ctr_offer":       float(fn_p1_ctr),
+            "p1_redemption_rate": float(fn_p1_rr),
+            "p2_offer_coverage":  float(fn_p2_cov),
+            "p2_ctr_offer":       float(fn_p2_ctr),
+            "p2_redemption_rate": float(fn_p2_rr),
+            "p3_offer_coverage":  float(fn_p3_cov),
+            "p3_ctr_offer":       float(fn_p3_ctr),
+            "p3_redemption_rate": float(fn_p3_rr),
+        },
+        "monetization": {
+            "w_new":           int(w_new),
+            "w_loyal":         int(w_loyal),
+            "w_ret":           int(w_ret),
+            "w_at_risk":       int(w_at_risk),
+            "price_new":       int(price_new),
+            "price_loyal":     int(price_loyal),
+            "price_ret":       int(price_ret),
+            "price_at_risk":   int(price_at_risk),
+            "incremental_adj": float(incremental_adj),
+        },
+        "variable_costs": {
+            "vc_per_redemption_p1": int(vc_p1),
+            "vc_per_redemption_p2": int(vc_p2),
+            "vc_per_redemption_p3": int(vc_p3),
+        },
+        "fixed_costs": {
+            "p1_team":      int(fc_p1_team),
+            "p1_infra":     int(fc_p1_infra),
+            "p1_marketing": int(fc_p1_marketing),
+            "p1_referral":  int(fc_p1_referral),
+            "p2_team":      int(fc_p2_team),
+            "p2_infra":     int(fc_p2_infra),
+            "p2_marketing": int(fc_p2_marketing),
+            "p2_referral":  int(fc_p2_referral),
+            "p3_team":      int(fc_p3_team),
+            "p3_infra":     int(fc_p3_infra),
+            "p3_marketing": int(fc_p3_marketing),
+            "p3_referral":  int(fc_p3_referral),
+        },
+        "discount": {
+            "annual_rate_pct": float(annual_discount_rate),
+        },
+        "platform_churn": {
+            "hub_monthly_churn_low_pct": int(hub_churn_low),
+            "hub_monthly_churn_mid_pct": int(hub_churn_mid),
+            "hub_monthly_churn_act_pct": int(hub_churn_act),
+        },
+        "rnd": {
+            "enabled":            bool(rnd_enabled),
+            "months":             int(rnd_months),
+            "pilot_audience_pct": int(pilot_audience_pct) if rnd_enabled else 5,
+            "monthly_costs":      {k: int(v) for k, v in rnd_monthly_costs.items()} if rnd_enabled else {},
+        },
+    }
+    _snapshot_json = json.dumps(_snapshot, ensure_ascii=False, indent=2)
+
+    # ── Экспорт ───────────────────────────────────────────────────────────────
+    st.download_button(
+        label="⬇️ Скачать конфигурацию (JSON)",
+        data=_snapshot_json,
+        file_name=f"hub_config_{datetime.datetime.now().strftime('%Y%m%d_%H%M')}.json",
+        mime="application/json",
+        use_container_width=True,
+        help="Скачивает JSON со всеми текущими параметрами модели.",
+    )
+
+    # ── Импорт ────────────────────────────────────────────────────────────────
+    st.markdown("**Загрузить конфигурацию:**")
+    _uploaded = st.file_uploader(
+        "Выберите JSON-файл конфигурации",
+        type=["json"],
+        key="config_uploader",
+        label_visibility="collapsed",
+    )
+    if _uploaded is not None:
+        try:
+            _imported = json.loads(_uploaded.read().decode("utf-8"))
+            # Сохраняем override и перезапускаем страницу
+            st.session_state["_hub_config_override"] = _imported
+            st.success("✅ Конфигурация загружена! Применяется...")
+            st.rerun()
+        except Exception as _e:
+            st.error(f"❌ Ошибка парсинга JSON: {_e}")
+
+    # ── Сброс к defaults ──────────────────────────────────────────────────────
+    if st.session_state.get("_hub_config_override") is not None:
+        st.info("ℹ️ Активна загруженная конфигурация.")
+        if st.button("🔄 Сбросить к базовым defaults", use_container_width=True):
+            del st.session_state["_hub_config_override"]
+            st.rerun()
 
 # ──────────────────────────────────────────────────────────────────────────────
 # Краткая сводка в сайдбаре
@@ -914,20 +1431,25 @@ st.sidebar.markdown("### 📊 Сводка")
 total_rev    = sum(r["revenue"] for r in cf_results)
 total_cost   = sum(r["total_costs"] for r in cf_results)
 net_cf_total = sum(r["cash_flow"] for r in cf_results)
-final_npv    = cf_results[-1]["cumulative_npv"] if cf_results else 0.0
 mau_end      = cf_results[-1]["mau_hub"] if cf_results else 0.0
 avg_rpu_end  = cf_results[-1]["avg_rpu"] if cf_results else 0.0
 seg_act_end  = cf_results[-1]["seg_act"] if cf_results else 0.0
 pct_act_end  = (seg_act_end / mau_end * 100.0) if mau_end > 0 else 0.0
 
-st.sidebar.markdown(f"**Выручка:** {format_currency_compact(total_rev)}")
-st.sidebar.markdown(f"**Затраты:** {format_currency_compact(total_cost)}")
+st.sidebar.markdown(f"**Выручка (рынок):** {format_currency_compact(total_rev)}")
+st.sidebar.markdown(f"**Затраты (рынок):** {format_currency_compact(total_cost)}")
 cf_color = "green" if net_cf_total >= 0 else "red"
-st.sidebar.markdown(f"**Net CF:** :{cf_color}[{format_currency_compact(net_cf_total)}]")
-npv_color = "green" if final_npv >= 0 else "red"
-st.sidebar.markdown(f"**NPV:** :{npv_color}[{format_currency_compact(final_npv)}]")
+st.sidebar.markdown(f"**Net CF (рынок):** :{cf_color}[{format_currency_compact(net_cf_total)}]")
+npv_color = "green" if final_npv_combined >= 0 else "red"
+st.sidebar.markdown(f"**NPV (combined):** :{npv_color}[{format_currency_compact(final_npv_combined)}]")
+if rnd_enabled and total_investment > 0:
+    inv_color = "orange"
+    st.sidebar.markdown(f"**RnD инвестиции:** :{inv_color}[{format_currency_compact(total_investment)}]")
+    if roi_year1 is not None:
+        roi_color = "green" if roi_year1 >= 0 else "red"
+        st.sidebar.markdown(f"**ROI год 1:** :{roi_color}[{roi_year1:.0f}%]")
 if breakeven["reached"]:
-    st.sidebar.markdown(f"**Breakeven:** :green[Месяц {breakeven['breakeven_month']}]")
+    st.sidebar.markdown(f"**Breakeven (рынок):** :green[Месяц {breakeven['breakeven_month']}]")
 else:
     st.sidebar.markdown(f"**Breakeven:** :red[Не достигнут за {num_months} мес.]")
 st.sidebar.markdown(f"**MAU Hub (кон.):** {format_number_compact(mau_end)}")
@@ -939,7 +1461,17 @@ st.sidebar.markdown(f"**%ACT (кон.):** {pct_act_end:.1f}%")
 # KPI-карточки
 # ──────────────────────────────────────────────────────────────────────────────
 
-display_kpi_cards(cf_results, breakeven, int(num_months))
+display_kpi_cards(
+    cf_results,
+    breakeven_combined,
+    int(num_months),
+    total_investment=total_investment if rnd_enabled else None,
+    roi_year1=roi_year1,
+    rnd_months=rnd_months,
+    final_npv_combined=final_npv_combined,
+    mau_hub_year12=mau_hub_year12,
+    npv_year12=npv_year12,
+)
 
 st.markdown("---")
 
@@ -966,11 +1498,13 @@ with st.expander("📐 Параметры расчёта (текущие зна�
         st.markdown(f"- Blended price: **{blended_price_preview:.0f} ₽/redemption**")
     with col2:
         st.markdown("**Stock-and-Flow**")
-        st.markdown(f"- MAU_web: **{format_number_compact(mau_web)}**")
-        st.markdown(f"- MAU_app: **{format_number_compact(mau_app)}**")
+        st.markdown(f"- MAU_web (старт): **{format_number_compact(mau_web)}**")
+        st.markdown(f"- MAU_app (старт): **{format_number_compact(mau_app)}**")
+        st.markdown(f"- Рост MAU web/app: **{mau_web_annual_growth:.0f}% / {mau_app_annual_growth:.0f}%** год.")
         st.markdown(f"- Overlap: **{overlap_pct:.0f}%**")
         st.markdown(f"- u_web/u_app: **{u_to_a_web:.1f}% / {u_to_a_app:.2f}%**")
         st.markdown(f"- web→app: **{web_to_app:.0f}%**")
+        st.markdown(f"- K-фактор P1/P2/P3 (годовой): **{p1_k_factor:.2f} / {p2_k_factor:.2f} / {p3_k_factor:.2f}** (мес. ставки: {p1_k_factor/12:.4f} / {p2_k_factor/12:.4f} / {p3_k_factor/12:.4f})")
     with col3:
         st.markdown("**Сегменты**")
         st.markdown(f"- w_l/w_m/w_a: **{w_l}/{w_m}/{w_a}%**")
@@ -985,7 +1519,12 @@ with st.expander("📐 Параметры расчёта (текущие зна�
 
 st.subheader("График 1 — Cash Flow и NPV по месяцам")
 st.plotly_chart(
-    create_cash_flow_chart(cf_results, int(phase1_end), int(phase2_end)),
+    create_cash_flow_chart(
+        cf_results,
+        int(phase1_end),
+        int(phase2_end),
+        RnD_cf_results=RnD_cf if rnd_enabled and RnD_cf else None,
+    ),
     use_container_width=True,
 )
 st.markdown(
@@ -1000,15 +1539,17 @@ st.markdown("---")
 # График 4 — Сегментная динамика
 # ──────────────────────────────────────────────────────────────────────────────
 
-st.subheader("График 4 — Сегментная динамика: NEW / LOW / MID / ACT")
+st.subheader("График 4 — Сегментная динамика: NEW / LOW / MID / ACT + Hub total")
 st.plotly_chart(
     create_segment_dynamics_chart(revenue_results, int(phase1_end), int(phase2_end)),
     use_container_width=True,
 )
 st.markdown(
-    "> **Как читать:** каждый цвет — сегмент по поведенческому паттерну. "
+    "> **Как читать:** закрашенные области — сегменты авторизованных app Hub-пользователей. "
     "Серый (NEW) — свежие app-пользователи этого месяца. "
     "Синий (LOW) — пассивные. Жёлтый (MID) — ситуативные. Зелёный (ACT) — оптимизаторы. "
+    "**Чёрная линия** — суммарный охват Hub (app + web): `mau_hub + new_web`. "
+    "Превышает стек на величину web-only пользователей (не авторизованы в app). "
     "Рост зелёного сегмента к концу горизонта — ключевой индикатор зрелости продукта."
 )
 st.markdown("---")

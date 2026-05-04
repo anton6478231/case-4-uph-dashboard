@@ -4,13 +4,23 @@
     "phase1_end": 3,
     "phase2_end": 9
   },
+  "_notes": "MAU_app = 34 млн — FY2025, T-Technologies IR (опорная цифра). 32.5 млн — данные 9М2024, устаревшие.",
+  "_growth_notes": "web_annual_growth_pct=35%: органический SEO + Hub-редизайн + платный трафик; бенчмарк — рост PromoDJ/Купонатора ~20%, но Hub-запуск даёт буст. app_annual_growth_pct=18%: T-Bank MAU 27M→34M за 2024→2025 = +26%; на горизонте 2 лет рост замедлится до 15-20% по мере насыщения (бенчмарк: зрелые super-app Revolut, Tinkoff IR Q1 2026).",
+  "mau_growth": {
+    "web_annual_growth_pct": 35.0,
+    "app_annual_growth_pct": 18.0
+  },
+  "_visitor_notes": "u_to_a_new_app = 1.0%: компромисс между 1.5% (давало нереалистичные 12M+ hub-пользователей = 35% аудитории T-Bank) и 0.5%. 1.0% × 34M = 340k новых/мес → ~4-5M накопленных к мес.24; с учётом platform churn активная база ~2.5-3.5M ≈ 7-10% проникновения. Бенчмарк: СберСпасибо ~1%/мес при запуске персонализации (оценочно); AppsFlyer Finance 2025: in-app rewards activation 0.6-1.2%/мес при onboarding push.",
   "visitor_model": {
     "MAU_web": 300000,
     "MAU_app": 34000000,
     "overlap_web_app_pct": 30.0,
     "u_to_a_new_web": 6.0,
-    "u_to_a_new_app": 1.5,
-    "web_to_app": 28.0
+    "u_to_a_new_app": 1.0,
+    "web_to_app": 28.0,
+    "p1_k_factor": 0.03,
+    "p2_k_factor": 0.10,
+    "p3_k_factor": 0.30
   },
   "segment_weights": {
     "w_l": 55,
@@ -41,15 +51,16 @@
     "p3_ctr_offer": 22.0,
     "p3_redemption_rate": 36.0
   },
+  "_monetization_notes": "Цены снижены до entry-level на старте: blended 135 ₽/redemption (было 358 ₽). Логика: (1) новый продукт без track record — партнёры торгуются на минимальные ставки; (2) mixed-category портфель тянет среднее вниз (фуд-доставка 80–150 ₽ vs fashion 300–500 ₽); (3) консервативный прогноз лучше на защите кейса, чем завышенный.",
   "monetization": {
     "w_new": 25,
     "w_loyal": 40,
     "w_ret": 20,
     "w_at_risk": 15,
-    "price_new": 650,
-    "price_loyal": 170,
-    "price_ret": 420,
-    "price_at_risk": 290,
+    "price_new": 200,
+    "price_loyal": 100,
+    "price_ret": 150,
+    "price_at_risk": 100,
     "incremental_adj": 0.87
   },
   "variable_costs": {
@@ -73,5 +84,11 @@
   },
   "discount": {
     "annual_rate_pct": 20.0
+  },
+  "_platform_churn_notes": "Пользователи, полностью прекращающие использование хаба (не просто снижение активности, а полный уход). Без этого параметра MAU_hub — поглощающий автомат, что нереалистично. LOW 15%: пассивные пользователи, попробовали раз и не вернулись; 6-мес. retention = 85%^6 = 37.7% (AppsFlyer: non-core banking feature 60-day retention ~35-45%). MID 8%: ситуативные, уходят без релевантных офферов; 6-мес. = 92%^6 = 60.6%. ACT 3%: power-users, CLO auto-apply удерживает; 6-мес. = 97%^6 = 83.2%.",
+  "platform_churn": {
+    "hub_monthly_churn_low_pct": 15,
+    "hub_monthly_churn_mid_pct": 8,
+    "hub_monthly_churn_act_pct": 3
   }
 }

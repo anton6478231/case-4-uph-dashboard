@@ -7,8 +7,13 @@ NPV          = сумма дисконтированных CF; месячная 
                r_monthly = (1 + annual_rate/100)^(1/12) − 1
 Breakeven    = первый месяц, когда Cumulative CF ≥ 0
 NPV Breakeven= первый месяц, когда Cumulative NPV ≥ 0
+
+RnD интеграция:
+  - month_offset в calculate_cash_flow_for_months сдвигает базу дисконтирования
+    рыночных месяцев на длину RnD фазы, сохраняя нумерацию М1…Mn.
+  - discount_rnd_cash_flows дисконтирует RnD CF по тем же правилам (m = 1..N).
+  - combined_npv = RnD NPV + Market NPV.
 """
-import math
 from typing import Dict, List, Optional
 
 
@@ -16,13 +21,15 @@ def calculate_cash_flow_for_months(
     revenue_results: List[Dict],
     costs_results: List[Dict],
     annual_discount_rate: float = 20.0,
+    month_offset: int = 0,
 ) -> List[Dict]:
     """
     Сшивает revenue и costs в единый cash flow по месяцам.
 
     annual_discount_rate — ставка дисконтирования, % годовых.
-    Месячная ставка: r_m = (1 + annual_discount_rate/100)^(1/12) − 1
-    PV(CF_t) = CF_t / (1 + r_m)^t
+    month_offset         — сдвиг базы дисконтирования (= rnd_months при RnD фазе):
+                           PV(CF_t) = CF_t / (1 + r_m)^(month_offset + t)
+                           Нумерация месяцев в таблице/графиках остаётся М1…Mn.
     """
     monthly_rate = (1.0 + annual_discount_rate / 100.0) ** (1.0 / 12.0) - 1.0
 
@@ -37,7 +44,7 @@ def calculate_cash_flow_for_months(
         cf = revenue - total_costs
         cumulative += cf
 
-        discount_factor = 1.0 / (1.0 + monthly_rate) ** month
+        discount_factor = 1.0 / (1.0 + monthly_rate) ** (month_offset + month)
         discounted_cf = cf * discount_factor
         cumulative_npv += discounted_cf
 
@@ -65,6 +72,40 @@ def calculate_cash_flow_for_months(
     return results
 
 
+def discount_rnd_cash_flows(
+    rnd_cf_results: List[Dict],
+    annual_discount_rate: float = 20.0,
+) -> List[Dict]:
+    """
+    Добавляет дисконтированные значения к RnD CF.
+
+    RnD месяц m дисконтируется как PV = CF / (1+r)^m (m = 1..rnd_months),
+    т.е. с нулевой точки отсчёта — начало инвестиций.
+
+    Возвращает тот же список с добавленными полями:
+        discount_factor, discounted_cash_flow, cumulative_npv.
+    """
+    monthly_rate = (1.0 + annual_discount_rate / 100.0) ** (1.0 / 12.0) - 1.0
+
+    cumulative_npv = 0.0
+    results = []
+
+    for row in rnd_cf_results:
+        m = row["month"]
+        cf = row["cash_flow"]
+        discount_factor = 1.0 / (1.0 + monthly_rate) ** m
+        discounted_cf = cf * discount_factor
+        cumulative_npv += discounted_cf
+
+        updated = dict(row)
+        updated["discount_factor"] = discount_factor
+        updated["discounted_cash_flow"] = discounted_cf
+        updated["cumulative_npv"] = cumulative_npv
+        results.append(updated)
+
+    return results
+
+
 def calculate_breakeven_month(cash_flow_results: List[Dict]) -> Dict:
     """
     Находит breakeven по обычному CF и по NPV.
@@ -83,13 +124,13 @@ def calculate_breakeven_month(cash_flow_results: List[Dict]) -> Dict:
     for row in cash_flow_results:
         if cf_breakeven is None and row["cumulative_cash_flow"] >= 0:
             cf_breakeven = row["month"]
-        if npv_breakeven is None and row["cumulative_npv"] >= 0:
+        if npv_breakeven is None and row.get("cumulative_npv", -1) >= 0:
             npv_breakeven = row["month"]
         if cf_breakeven is not None and npv_breakeven is not None:
             break
 
     final = cash_flow_results[-1]["cumulative_cash_flow"] if cash_flow_results else 0.0
-    final_npv = cash_flow_results[-1]["cumulative_npv"] if cash_flow_results else 0.0
+    final_npv = cash_flow_results[-1].get("cumulative_npv", 0.0) if cash_flow_results else 0.0
 
     return {
         "reached": cf_breakeven is not None,

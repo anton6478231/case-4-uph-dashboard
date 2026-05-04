@@ -34,5 +34,23 @@ mvp_onboarding_page = st.Page(
     icon="🛍️",
 )
 
-pg = st.navigation([calculator_page, business_logic_page, mvp_onboarding_page])
+case_answers_page = st.Page(
+    "pages/case_answers.py",
+    title="Ответы на задачи кейса",
+    icon="📋",
+)
+
+business_case_page = st.Page(
+    "pages/business_case_page.py",
+    title="Условие кейса",
+    icon="📄",
+)
+
+pg = st.navigation([
+    calculator_page,
+    business_logic_page,
+    mvp_onboarding_page,
+    case_answers_page,
+    business_case_page,
+])
 pg.run()
