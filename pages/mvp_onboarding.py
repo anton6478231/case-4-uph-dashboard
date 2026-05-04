@@ -918,6 +918,58 @@ def render_result():
         else:
             st.caption("Категории не выбраны — вы будете получать общую подборку")
 
+    # Кнопка «Показать все офферы категории» (Пункт 4)
+    with st.expander(f"Показать все офферы категории «{top_cat}»"):
+        all_cat_promos = sorted(
+            PROMO_CATALOG.get(top_cat, []),
+            key=lambda p: p["relevance"],
+            reverse=True,
+        )
+        if all_cat_promos:
+            cols_all = st.columns(min(len(all_cat_promos), 3))
+            for i, promo in enumerate(all_cat_promos):
+                with cols_all[i % 3]:
+                    fo_label = " · Только первый заказ" if promo.get("first_order") else ""
+                    st.markdown(f"""
+                    <div class="promo-card">
+                      <span class="promo-badge">⭐ {promo.get('tag', '')}{fo_label}</span>
+                      <div class="promo-shop">{promo['shop']}</div>
+                      <div class="promo-desc">{promo['desc']}</div>
+                      <span class="promo-code-box">{promo['code']}</span>
+                    </div>
+                    """, unsafe_allow_html=True)
+        else:
+            st.caption("Промокоды для этой категории временно недоступны.")
+
+    # Блок «Популярное рядом» — офферы из смежных категорий (Пункт 3)
+    other_cats = [c for c in PROMO_CATALOG if c != top_cat]
+    discovery_promos = []
+    for cat in other_cats:
+        best = next(
+            (p for p in sorted(PROMO_CATALOG[cat], key=lambda x: -x["relevance"])
+             if not (p.get("first_order") and p["shop"] in used_shops)),
+            None,
+        )
+        if best:
+            discovery_promos.append((cat, best))
+    discovery_promos = discovery_promos[:3]
+
+    if discovery_promos:
+        st.markdown("<br>", unsafe_allow_html=True)
+        st.markdown("### Популярное рядом")
+        st.caption("Возможно, вас заинтересует — акции из других категорий")
+        disc_cols = st.columns(len(discovery_promos))
+        for i, (cat, promo) in enumerate(discovery_promos):
+            with disc_cols[i]:
+                st.markdown(f"""
+                <div class="promo-card">
+                  <span class="promo-badge">🔍 {cat}</span>
+                  <div class="promo-shop">{promo['shop']}</div>
+                  <div class="promo-desc">{promo['desc']}</div>
+                  <span class="promo-code-box">{promo['code']}</span>
+                </div>
+                """, unsafe_allow_html=True)
+
     # Миграционный CTA для new_web_2 и new_web_3
     if segment in ("new_web_2", "new_web_3"):
         st.markdown("<br>", unsafe_allow_html=True)
