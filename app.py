@@ -59,12 +59,12 @@ market_analysis_page = st.Page(
 )
 
 pg = st.navigation([
-    business_case_page,
     case_answers_page,
     market_analysis_page,
     mvp_onboarding_page,
     calculator_page,
     business_logic_page,
     custdev_results_page,
+    business_case_page,
 ])
 pg.run()
