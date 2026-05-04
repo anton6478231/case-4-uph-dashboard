@@ -989,6 +989,7 @@ def render_result():
 def main():
     init_state()
     inject_css()
+    st.caption("← Используйте меню слева для перехода между разделами.")
 
     step = st.session_state.get("mvp_step", 0)
 

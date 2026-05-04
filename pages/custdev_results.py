@@ -63,6 +63,7 @@ def hbar(labels, values, title, height=None):
 
 # ══════════════════════════════════════════════════════════════════════════════
 st.title("Результаты CustDev — Unified Promo Hub")
+st.caption("← Используйте меню слева для перехода между разделами.")
 st.markdown(
     "Антон Москалюк · mini CEO 2026 · 2026-05-04  \n"
     "Первичное исследование: опрос v4 (n=35, Google Forms) + desk-research."

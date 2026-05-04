@@ -4,6 +4,7 @@
 import streamlit as st
 
 st.title("Условие кейса — T-Bank «Промокоды»")
+st.caption("← Используйте меню слева для перехода между разделами.")
 st.caption("mini CEO, 2-й поток · Оригинальный текст задания")
 st.markdown("---")
 
