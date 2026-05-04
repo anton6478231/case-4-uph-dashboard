@@ -19,7 +19,6 @@ calculator_page = st.Page(
     "pages/calculator.py",
     title="Калькулятор ФЭМ",
     icon="📊",
-    default=True,
 )
 
 business_logic_page = st.Page(
@@ -38,6 +37,7 @@ case_answers_page = st.Page(
     "pages/case_answers.py",
     title="Ответы на задачи кейса",
     icon="📋",
+    default=True,
 )
 
 custdev_results_page = st.Page(
